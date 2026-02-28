@@ -11,7 +11,7 @@ NAZWA:
 Wielka Piątka
 
 TECHNOLOGIA:
-.NET, Vue
+.NET, Vue.js
 
 PLAN:
-Stworzyć aplikację w oparciu o serwis Degra, z użyciem API Degry w celu personalizacji planu z możliwością wyboru zajęć oraz eksportem do pliku kompatybilnego z kalendarzem - CalDEV. Dodatkowo możliwość śledzenia zmian w planie z powiadomieniami.
+Stworzyć aplikację w oparciu o serwis Degra, z użyciem API Degry w celu personalizacji planu z możliwością wyboru zajęć oraz eksportem do pliku kompatybilnego z kalendarzem - CalDAV. Dodatkowo możliwość śledzenia zmian w planie z powiadomieniami.
