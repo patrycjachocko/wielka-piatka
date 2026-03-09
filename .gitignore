@@ -21,7 +21,6 @@ coverage
 *.suo
 *.ntvs*
 *.njsproj
-*.sln
 *.sw?
 
 *.tsbuildinfo
@@ -40,3 +39,16 @@ __screenshots__/
 
 test-results/
 playwright-report/
+
+
+# Compile folders
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+.vs/
+*.user
+*.userosscache
+*.sln.docstates
+
+# Temp files
+appsettings.Development.json
