@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 using wielkapiatka.Data;
+using wielkapiatka.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -25,14 +26,31 @@ builder.Services.AddControllers();
 // 4. Natywne OpenAPI dla .NET (zamiast Swashbuckle)
 builder.Services.AddOpenApi();
 
+// 5. Rejestracja HttpClient i serwisu API Degra
+builder.Services.AddHttpClient<DegraApiService>();
+
+// 6. Rejestracja serwisu synchronizacji jako singleton + hosted service
+builder.Services.AddSingleton<ScheduleSyncService>();
+builder.Services.AddHostedService(provider => provider.GetRequiredService<ScheduleSyncService>());
+
+// 7. Serwis eksportu kalendarza (iCal / CalDAV)
+builder.Services.AddScoped<CalendarExportService>();
+
 var app = builder.Build();
 
-// 5. Konfiguracja pipeline'u - zamiana Swaggera na Scalara
+// 7. Automatyczna migracja bazy przy starcie
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.EnsureCreated();
+}
+
+// 8. Konfiguracja pipeline'u - zamiana Swaggera na Scalara
 if (app.Environment.IsDevelopment())
 {
     // Generuje plik openapi.json pod adresem /openapi/v1.json
     app.MapOpenApi(); 
-    
+
     // Udostępnia piękny interfejs Scalar pod adresem /scalar/v1
     app.MapScalarApiReference(); 
 }
