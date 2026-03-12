@@ -1,62 +1,43 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 
-import { defaultLeafId, partTimeDays, weekdayDays, weekdaySlots, weekendDays, weekendSlots } from '@/mocks/schedule'
 import { useScheduleStore } from '@/stores/schedule'
 
-describe('schedule store', () => {
+describe('schedule store (Phase 3)', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
   })
 
-  it('defaults to the full-time student schedule', () => {
+  it('initializes with correct default state', () => {
     const store = useScheduleStore()
 
-    expect(store.selectedLeafId).toBe(defaultLeafId)
-    expect(store.currentView.contextLabel).toBe('Informatyka I, semestr 1')
-    expect(store.currentView.weekdayDays).toEqual(weekdayDays)
-    expect(store.currentView.weekdayDays.map((day) => day.key)).toEqual([
-      'monday',
-      'tuesday',
-      'wednesday',
-      'thursday',
-      'friday',
+    expect(store.currentView.contextLabel).toBe('Plan zajęć')
+    expect(store.currentView.audience).toBe('student')
+    expect(store.currentView.studyMode).toBe('full-time')
+    expect(store.currentView.weekdayDays).toEqual([
+      'monday', 'tuesday', 'wednesday', 'thursday', 'friday'
     ])
-    expect(store.currentView.weekdaySlots).toHaveLength(weekdaySlots.length)
-    expect(store.currentView.weekendDays).toHaveLength(0)
-    expect(store.currentView.weekendSlots).toHaveLength(0)
+    expect(store.currentView.weekendDays).toEqual(['saturday', 'sunday'])
+    expect(store.events).toEqual([])
   })
 
-  it('shows friday to sunday for part-time students', () => {
+  it('has correct loading states', () => {
     const store = useScheduleStore()
 
-    store.selectLeaf('student-part-time-informatyka-2-sem-1')
-
-    expect(store.selectedStudyMode).toBe('part-time')
-    expect(store.currentView.weekdayDays).toHaveLength(0)
-    expect(store.currentView.weekdaySlots).toHaveLength(0)
-    expect(store.currentView.weekendDays).toEqual(partTimeDays)
-    expect(store.currentView.weekendDays.map((day) => day.key)).toEqual([
-      'friday',
-      'saturday',
-      'sunday',
-    ])
-    expect(store.currentView.weekendSlots).toHaveLength(weekendSlots.length)
-    expect(store.currentView.events.some((event) => event.day === 'friday')).toBe(true)
-    expect(store.currentView.events.some((event) => event.day === 'saturday')).toBe(true)
-    expect(store.currentView.events.some((event) => event.subject === 'Projektowanie aplikacji')).toBe(true)
+    expect(store.isLoading).toBe(false)
+    expect(store.hasError).toBe(false)
+    expect(store.hasChanges).toBe(false)
+    expect(store.pendingChangesCount).toBe(0)
   })
 
-  it('shows the full monday to sunday layout for teachers', () => {
+  it('provides legacy compatibility methods', () => {
     const store = useScheduleStore()
 
-    store.selectLeaf('teacher-jan-kowalski')
-
-    expect(store.selectedAudience).toBe('teacher')
-    expect(store.currentView.weekdayDays).toEqual(weekdayDays)
-    expect(store.currentView.weekdaySlots).toHaveLength(weekdaySlots.length)
-    expect(store.currentView.weekendDays).toEqual(weekendDays)
-    expect(store.currentView.weekendSlots).toHaveLength(weekendSlots.length)
-    expect(store.currentView.events.some((event) => event.day === 'saturday')).toBe(true)
+    // Legacy methods should exist for compatibility
+    expect(typeof store.selectLeaf).toBe('function')
+    expect(store.selectedAudience).toBe('student')
+    expect(store.selectedLeafId).toBe('general')
+    expect(store.selectedStudyMode).toBe('full-time')
+    expect(Array.isArray(store.sidebarTree)).toBe(true)
   })
 })

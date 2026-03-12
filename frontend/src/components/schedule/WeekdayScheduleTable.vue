@@ -2,11 +2,12 @@
 import { computed } from 'vue'
 
 import ScheduleEventCard from '@/components/schedule/ScheduleEventCard.vue'
-import type { DayKey, ScheduleDay, ScheduleEvent, TimeSlot } from '@/types/schedule'
+import type { DayKey, ScheduleDay, TimeSlot } from '@/types/schedule'
+import type { EnhancedScheduleEvent } from '@/stores/schedule'
 
 const props = defineProps<{
   days: ScheduleDay[]
-  events: ScheduleEvent[]
+  events: EnhancedScheduleEvent[]
   slots: TimeSlot[]
 }>()
 

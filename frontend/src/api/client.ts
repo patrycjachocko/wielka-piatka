@@ -15,12 +15,8 @@ export function buildQueryString(params: Record<string, string | number | boolea
   return queryString ? `?${queryString}` : '';
 }
 
-// API Response type
-export interface ApiResponse<T = any> {
-  data?: T;
-  error?: string;
-  success: boolean;
-}
+// Import ApiResponse from types to ensure consistency
+import type { ApiResponse } from './types';
 
 // HTTP Methods
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
@@ -103,7 +99,10 @@ export class ApiClient {
       if (!response.ok) {
         return {
           success: false,
-          error: `HTTP ${response.status}: ${response.statusText}`,
+          error: {
+            message: `HTTP ${response.status}: ${response.statusText}`,
+            details: typeof data === 'string' ? data : undefined
+          },
           data,
         };
       }
@@ -115,7 +114,9 @@ export class ApiClient {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        error: {
+          message: error instanceof Error ? error.message : 'Unknown error occurred'
+        }
       };
     }
   }
