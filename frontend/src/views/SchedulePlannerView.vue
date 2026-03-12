@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia'
 
 import ScheduleBoard from '@/components/schedule/ScheduleBoard.vue'
 import ScheduleSidebar from '@/components/sidebar/ScheduleSidebar.vue'
+import ClientDebugPanel from '@/components/debug/ClientDebugPanel.vue'
 import { useScheduleStore } from '@/stores/schedule'
 
 const scheduleStore = useScheduleStore()
@@ -32,6 +33,9 @@ const visibleDaysLabel = computed(() => {
           Mockowy interfejs do przeglądania planu zajęć dla studentów i prowadzących.
         </p>
       </header>
+
+      <!-- Client Debug Panel -->
+      <ClientDebugPanel />
 
       <ScheduleSidebar
         :nodes="scheduleStore.sidebarTree"
