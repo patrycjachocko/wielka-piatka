@@ -532,12 +532,17 @@ public static class ScheduleEndpoints
         });
     }
 
+    private const string PolishTimeZone = "Europe/Warsaw";
+
     private static void GenerateIcsEvents(
         Calendar calendar,
         List<IcsEntry> entries,
         DateTime poniedzialek,
         int nrTygodnia)
     {
+        // Add Polish timezone definition to the calendar
+        calendar.AddTimeZone(VTimeZone.FromSystemTimeZone(TimeZoneInfo.FindSystemTimeZoneById("Central European Standard Time")));
+
         foreach (var wpis in entries)
         {
             // Apply custom time overrides if present
@@ -563,15 +568,17 @@ public static class ScheduleEndpoints
             }
 
             var (godzinaStart, godzinaEnd) = TimeSlotHelper.GetTimeRange(dzien, godzina, ilosc);
-            var dtStart = DateTime.SpecifyKind(startDate.Add(godzinaStart.ToTimeSpan()), DateTimeKind.Utc);
-            var dtEnd = DateTime.SpecifyKind(startDate.Add(godzinaEnd.ToTimeSpan()), DateTimeKind.Utc);
+            // Create DateTime without UTC marking - these are local Polish times
+            var dtStart = startDate.Add(godzinaStart.ToTimeSpan());
+            var dtEnd = startDate.Add(godzinaEnd.ToTimeSpan());
 
             var evt = new CalendarEvent
             {
                 Summary = $"[{wpis.Rodzaj}] {wpis.PrzedmiotNazwa}",
                 Location = wpis.SalaNazwa,
-                DtStart = new CalDateTime(dtStart),
-                DtEnd = new CalDateTime(dtEnd),
+                // Use CalDateTime with explicit timezone to prevent incorrect UTC conversion
+                DtStart = new CalDateTime(dtStart, PolishTimeZone),
+                DtEnd = new CalDateTime(dtEnd, PolishTimeZone),
             };
 
             // Add recurrence rules

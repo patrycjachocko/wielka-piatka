@@ -10,6 +10,8 @@ namespace TimetableApp.Endpoints;
 
 public static class EksportEndpoints
 {
+    private const string PolishTimeZone = "Europe/Warsaw";
+
     public static void MapEksportEndpoints(this WebApplication app)
     {
         app.MapGet("/api/eksport/ics", async (TimetableDbContext db) =>
@@ -66,6 +68,8 @@ public static class EksportEndpoints
 
             var calendar = new Calendar();
             calendar.AddProperty("X-WR-CALNAME", "Plan zajęć WI PB");
+            // Add Polish timezone definition to the calendar
+            calendar.AddTimeZone(VTimeZone.FromSystemTimeZone(TimeZoneInfo.FindSystemTimeZoneById("Central European Standard Time")));
 
             // Przyjmujemy bieżący tydzień akademicki jako punkt startowy
             var dzisiaj = DateTime.Today;
@@ -93,6 +97,7 @@ public static class EksportEndpoints
                     var dzienDaty = startTygodnia.AddDays(wpis.Dzien - 1);
                     var (godzinaStart, godzinaEnd) = TimeSlotHelper.GetTimeRange(wpis.Dzien, wpis.Godzina, wpis.Ilosc);
 
+                    // Create DateTime without UTC marking - these are local Polish times
                     var dtStart = dzienDaty.Add(godzinaStart.ToTimeSpan());
                     var dtEnd = dzienDaty.Add(godzinaEnd.ToTimeSpan());
 
@@ -101,8 +106,9 @@ public static class EksportEndpoints
                         Summary = $"{wpis.PrzedmiotSkrot} ({wpis.Rodzaj} gr. {wpis.Grupa})",
                         Description = $"{wpis.PrzedmiotNazwa}\n{wpis.NauczycielNazwa}\n{wpis.Rodzaj} grupa {wpis.Grupa}",
                         Location = wpis.SalaNazwa,
-                        DtStart = new CalDateTime(dtStart),
-                        DtEnd = new CalDateTime(dtEnd),
+                        // Use CalDateTime with explicit timezone to prevent incorrect UTC conversion
+                        DtStart = new CalDateTime(dtStart, PolishTimeZone),
+                        DtEnd = new CalDateTime(dtEnd, PolishTimeZone),
                     };
 
                     calendar.Events.Add(evt);
