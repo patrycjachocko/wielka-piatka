@@ -405,8 +405,14 @@ public static class ScheduleEndpoints
                        && r.IdSpecjalnosci == config.IdSpecjalnosci
                     select new
                     {
-                        r.Dzien, r.Godzina, r.Ilosc, r.Tydzien, r.Rodzaj, r.Grupa,
-                        r.IdPrzedmiotu, r.IdSali,
+                        r.Dzien,
+                        r.Godzina,
+                        r.Ilosc,
+                        r.Tydzien,
+                        r.Rodzaj,
+                        r.Grupa,
+                        r.IdPrzedmiotu,
+                        r.IdSali,
                         PrzedmiotNazwa = p != null ? p.Nazwa : "?",
                         SalaNazwa = s != null ? s.Nazwa : "?",
                     }
@@ -486,8 +492,13 @@ public static class ScheduleEndpoints
                     where r.IdNauczyciela == config.IdNauczyciela
                     select new
                     {
-                        r.Dzien, r.Godzina, r.Ilosc, r.Tydzien, r.Rodzaj,
-                        r.IdPrzedmiotu, r.Grupa,
+                        r.Dzien,
+                        r.Godzina,
+                        r.Ilosc,
+                        r.Tydzien,
+                        r.Rodzaj,
+                        r.IdPrzedmiotu,
+                        r.Grupa,
                         PrzedmiotNazwa = p != null ? p.Nazwa : "?",
                         SalaNazwa = s != null ? s.Nazwa : "?",
                     }
