@@ -96,53 +96,76 @@ public static class RozkladEndpoints
         });
 
         // Konsultacje nauczyciela (grupowanie kolejnych slotów w ciągłe bloki)
-        group.MapGet("/nauczyciel/{idNauczyciela:int}/konsultacje", async (int idNauczyciela, TimetableDbContext db) =>
+        group.MapGet("/nauczyciel/{idNauczyciela:int}/konsultacje", GetKonsultacjeHandler);
+    }
+
+    // ─── HANDLER DO TESTÓW JEDNOSTKOWYCH ─────────────────────────────────────
+
+    /// <summary>
+    /// Handler dla GET /api/rozklad/nauczyciel/{id}/konsultacje.
+    /// Wyciągnięty do publicznej metody statycznej, aby umożliwić testy jednostkowe.
+    /// </summary>
+    public static async Task<IResult> GetKonsultacjeHandler(int idNauczyciela, TimetableDbContext db)
+    {
+        var konsultacje = await db.Konsultacje
+            .Where(k => k.IdNauczyciela == idNauczyciela)
+            .OrderBy(k => k.Dzien).ThenBy(k => k.Godzina)
+            .ToListAsync();
+
+        // Grupuj kolejne sloty tego samego dnia i opisu w ciągłe bloki.
+        // Sloty są ciągłe tylko jeśli koniec jednego == start następnego (brak przerwy).
+        var bloki = new List<KonsultacjaBlock>();
+        int i = 0;
+        while (i < konsultacje.Count)
         {
-            var konsultacje = await db.Konsultacje
-                .Where(k => k.IdNauczyciela == idNauczyciela)
-                .OrderBy(k => k.Dzien).ThenBy(k => k.Godzina)
-                .ToListAsync();
+            var start = konsultacje[i];
+            int ilosc = 1;
 
-            // Grupuj kolejne sloty tego samego dnia i opisu w ciągłe bloki.
-            // Sloty są ciągłe tylko jeśli koniec jednego == start następnego (brak przerwy).
-            var bloki = new List<object>();
-            int i = 0;
-            while (i < konsultacje.Count)
+            // Sprawdź ile kolejnych slotów jest ciągłych (bez przerwy)
+            while (i + ilosc < konsultacje.Count
+                && konsultacje[i + ilosc].Dzien == start.Dzien
+                && konsultacje[i + ilosc].Godzina == start.Godzina + ilosc
+                && konsultacje[i + ilosc].Opis == start.Opis)
             {
-                var start = konsultacje[i];
-                int ilosc = 1;
+                // Sprawdź czy koniec bieżącego slotu == start następnego (brak przerwy)
+                var currentEnd = TimeSlotHelper.GetTimeRange(start.Dzien, start.Godzina + ilosc - 1, 1).End;
+                var nextStart = TimeSlotHelper.GetTimeRange(start.Dzien, start.Godzina + ilosc, 1).Start;
+                if (currentEnd != nextStart)
+                    break; // Jest przerwa — nowy blok
 
-                // Sprawdź ile kolejnych slotów jest ciągłych (bez przerwy)
-                while (i + ilosc < konsultacje.Count
-                    && konsultacje[i + ilosc].Dzien == start.Dzien
-                    && konsultacje[i + ilosc].Godzina == start.Godzina + ilosc
-                    && konsultacje[i + ilosc].Opis == start.Opis)
-                {
-                    // Sprawdź czy koniec bieżącego slotu == start następnego (brak przerwy)
-                    var currentEnd = TimeSlotHelper.GetTimeRange(start.Dzien, start.Godzina + ilosc - 1, 1).End;
-                    var nextStart = TimeSlotHelper.GetTimeRange(start.Dzien, start.Godzina + ilosc, 1).Start;
-                    if (currentEnd != nextStart)
-                        break; // Jest przerwa — nowy blok
-
-                    ilosc++;
-                }
-
-                bloki.Add(new
-                {
-                    start.Id,
-                    start.Dzien,
-                    DzienNazwa = TimeSlotHelper.GetDayName(start.Dzien),
-                    start.Godzina,
-                    Ilosc = ilosc,
-                    Czas = TimeSlotHelper.FormatTimeRange(start.Dzien, start.Godzina, ilosc),
-                    start.Opis,
-                    start.Typ
-                });
-
-                i += ilosc;
+                ilosc++;
             }
 
-            return Results.Ok(bloki);
-        });
+            bloki.Add(new KonsultacjaBlock
+            {
+                Id = start.Id,
+                Dzien = start.Dzien,
+                DzienNazwa = TimeSlotHelper.GetDayName(start.Dzien),
+                Godzina = start.Godzina,
+                Ilosc = ilosc,
+                Czas = TimeSlotHelper.FormatTimeRange(start.Dzien, start.Godzina, ilosc),
+                Opis = start.Opis,
+                Typ = start.Typ
+            });
+
+            i += ilosc;
+        }
+
+        return Results.Ok(bloki);
+    }
+
+    /// <summary>
+    /// DTO dla scalonych bloków konsultacji - publiczny dla testów.
+    /// </summary>
+    public class KonsultacjaBlock
+    {
+        public int Id { get; set; }
+        public int Dzien { get; set; }
+        public string DzienNazwa { get; set; } = string.Empty;
+        public int Godzina { get; set; }
+        public int Ilosc { get; set; }
+        public string Czas { get; set; } = string.Empty;
+        public string Opis { get; set; } = string.Empty;
+        public string? Typ { get; set; }
     }
 }

@@ -36,38 +36,7 @@ public static class KonfiguracjaEndpoints
         });
 
         // Zapisz / aktualizuj konfigurację
-        group.MapPost("/", async (KonfiguracjaRequest request, TimetableDbContext db) =>
-        {
-            // Usuń starą konfigurację (lokalnie jeden użytkownik)
-            var stara = await db.KonfiguracjaUzytkownika
-                .Include(k => k.WyboryGrup)
-                .FirstOrDefaultAsync();
-
-            if (stara != null)
-            {
-                db.WyboryGrup.RemoveRange(stara.WyboryGrup);
-                db.KonfiguracjaUzytkownika.Remove(stara);
-                await db.SaveChangesAsync();
-            }
-
-            var nowa = new KonfiguracjaUzytkownika
-            {
-                IdStudiow = request.IdStudiow,
-                Semestr = request.Semestr,
-                IdSpecjalnosci = request.IdSpecjalnosci,
-                WyboryGrup = request.WyboryGrup.Select(g => new WyborGrupy
-                {
-                    RodzajZajec = g.RodzajZajec,
-                    NumerGrupy = g.NumerGrupy,
-                    IdPrzedmiotu = g.IdPrzedmiotu
-                }).ToList()
-            };
-
-            db.KonfiguracjaUzytkownika.Add(nowa);
-            await db.SaveChangesAsync();
-
-            return Results.Ok(new { nowa.Id });
-        });
+        group.MapPost("/", KonfiguracjaHandlers.ZapiszKonfiguracjeHandler);
 
         // Dodaj nadpisanie grupy dla przedmiotu (personalizacja)
         group.MapPost("/nadpisanie", async (NadpisanieRequest request, TimetableDbContext db) =>
@@ -128,3 +97,46 @@ public record NadpisanieRequest(
     int NumerGrupy,
     int IdPrzedmiotu
 );
+
+// ─── HANDLER DO TESTÓW JEDNOSTKOWYCH ─────────────────────────────────────
+
+public static class KonfiguracjaHandlers
+{
+    /// <summary>
+    /// Handler dla POST /api/konfiguracja.
+    /// Wyciągnięty do publicznej metody statycznej, aby umożliwić testy jednostkowe.
+    /// WAŻNE: Usuwa starą konfigurację i zapisuje nową (założenie: jeden lokalny użytkownik).
+    /// </summary>
+    public static async Task<IResult> ZapiszKonfiguracjeHandler(KonfiguracjaRequest request, TimetableDbContext db)
+    {
+        // Usuń starą konfigurację (lokalnie jeden użytkownik)
+        var stara = await db.KonfiguracjaUzytkownika
+            .Include(k => k.WyboryGrup)
+            .FirstOrDefaultAsync();
+
+        if (stara != null)
+        {
+            db.WyboryGrup.RemoveRange(stara.WyboryGrup);
+            db.KonfiguracjaUzytkownika.Remove(stara);
+            await db.SaveChangesAsync();
+        }
+
+        var nowa = new KonfiguracjaUzytkownika
+        {
+            IdStudiow = request.IdStudiow,
+            Semestr = request.Semestr,
+            IdSpecjalnosci = request.IdSpecjalnosci,
+            WyboryGrup = request.WyboryGrup.Select(g => new WyborGrupy
+            {
+                RodzajZajec = g.RodzajZajec,
+                NumerGrupy = g.NumerGrupy,
+                IdPrzedmiotu = g.IdPrzedmiotu
+            }).ToList()
+        };
+
+        db.KonfiguracjaUzytkownika.Add(nowa);
+        await db.SaveChangesAsync();
+
+        return Results.Ok(new { nowa.Id });
+    }
+}
