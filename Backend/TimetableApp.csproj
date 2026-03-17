@@ -6,6 +6,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
+  <!-- Wykluczenie projektów testowych z kompilacji -->
+  <ItemGroup>
+    <Compile Remove="Tests_*/**" />
+    <Content Remove="Tests_*/**" />
+    <None Remove="Tests_*/**" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Ical.Net" Version="5.2.1" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.4" />
