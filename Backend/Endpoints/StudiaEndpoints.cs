@@ -11,21 +11,7 @@ public static class StudiaEndpoints
         var group = app.MapGroup("/api/studia");
 
         // Lista kierunków studiów (tylko te, które mają wpisy w rozkładzie, bez REZERWACJI)
-        group.MapGet("/", async (TimetableDbContext db) =>
-        {
-            var aktywneIdStudiow = await db.Rozklady
-                .Select(r => r.IdStudiow)
-                .Distinct()
-                .ToListAsync();
-
-            var studia = await db.Studia
-                .Where(s => aktywneIdStudiow.Contains(s.Id) && s.Nazwa != "REZERWACJE")
-                .OrderBy(s => s.Nazwa)
-                .Select(s => new { s.Id, s.Nazwa })
-                .ToListAsync();
-
-            return Results.Ok(studia);
-        });
+        group.MapGet("/", GetStudiaHandler);
 
         // Semestry dostępne dla danego kierunku (bez semestru 0)
         group.MapGet("/{idStudiow:int}/semestry", async (int idStudiow, TimetableDbContext db) =>
@@ -63,7 +49,6 @@ public static class StudiaEndpoints
         // Rodzaje zajęć + dostępne grupy dla danego kierunku/semestru/specjalności
         group.MapGet("/{idStudiow:int}/grupy", async (int idStudiow, int semestr, int idSpec, TimetableDbContext db) =>
         {
-            // Pobierz pary (rodzaj, grupa) — flat list, grupujemy w pamięci (SQLite nie wspiera APPLY)
             var pairs = await db.Rozklady
                 .Where(r => r.IdStudiow == idStudiow && r.Semestr == semestr && r.IdSpecjalnosci == idSpec)
                 .Select(r => new { r.Rodzaj, r.Grupa })
@@ -82,5 +67,23 @@ public static class StudiaEndpoints
 
             return Results.Ok(grupy);
         });
+    }
+
+    // ─── HANDLER DO TESTÓW JEDNOSTKOWYCH ─────────────────────────────────────
+    
+    public static async Task<IResult> GetStudiaHandler(TimetableDbContext db)
+    {
+        var aktywneIdStudiow = await db.Rozklady
+            .Select(r => r.IdStudiow)
+            .Distinct()
+            .ToListAsync();
+
+        var studia = await db.Studia
+            .Where(s => aktywneIdStudiow.Contains(s.Id) && s.Nazwa != "REZERWACJE")
+            .OrderBy(s => s.Nazwa)
+            .Select(s => new { s.Id, s.Nazwa })
+            .ToListAsync();
+
+        return Results.Ok(studia);
     }
 }

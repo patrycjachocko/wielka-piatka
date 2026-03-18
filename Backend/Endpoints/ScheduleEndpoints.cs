@@ -20,7 +20,7 @@ public static class ScheduleEndpoints
 
     private record TeacherConfig(int IdNauczyciela);
 
-    private record IcsEntry(int Dzien, int Godzina, int Ilosc, int Tydzien,
+    public record IcsEntry(int Dzien, int Godzina, int Ilosc, int Tydzien,
         string Rodzaj, string PrzedmiotNazwa, string SalaNazwa,
         bool ForceWeekly = false, int? CustomDay = null,
         int? CustomStartSlot = null, int? CustomDuration = null);
@@ -545,7 +545,7 @@ public static class ScheduleEndpoints
 
     private const string PolishTimeZone = "Europe/Warsaw";
 
-    private static void GenerateIcsEvents(
+    public static void GenerateIcsEvents(
         Calendar calendar,
         List<IcsEntry> entries,
         DateTime poniedzialek,
