@@ -28,7 +28,7 @@ public class KlaudiaBackTests
 
         Assert.Equal("slot", exception.ParamName);
     }
--
+
     // test 2: ICS generator tworzy poprawne RecurrenceRules i strefę czasową
     [Fact]
     public void GenerateIcsEvents_CreatesCorrectRecurrenceRulesAndTimeZone()
