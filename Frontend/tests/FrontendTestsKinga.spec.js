@@ -944,3 +944,192 @@ test('Przy niezapisanych zmianach guard blokuje opuszczenie strony', async ({ pa
   await expect(page).toHaveURL(/\/moj-plan$/)
   expect(confirmMessage).toContain('Masz niezapisane zmiany')
 })
+
+// test14
+test('Pelny E2E: filtracja, zapis planu, edycja grupy w Moj plan i zapis poprawek', async ({ page, request }) => {
+  const apiBase = 'http://localhost:5289/api'
+  const planName = `Plan E2E UI ${Date.now()}`
+  let createdScheduleId = null
+
+  const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+  async function getJson(url) {
+    const response = await request.get(url)
+    if (!response.ok()) return null
+    return response.json()
+  }
+
+  async function findFlowConfig() {
+    const kierunki = await getJson(`${apiBase}/studia`)
+    if (!Array.isArray(kierunki) || kierunki.length === 0) return null
+
+    const preferredName = 'stac. i st., kier. informatyka'
+    const sortedKierunki = [...kierunki].sort((a, b) => {
+      const aPreferred = String(a?.nazwa || '').toLowerCase() === preferredName ? 0 : 1
+      const bPreferred = String(b?.nazwa || '').toLowerCase() === preferredName ? 0 : 1
+      return aPreferred - bPreferred
+    })
+
+    for (const kierunek of sortedKierunki) {
+      const semestry = await getJson(`${apiBase}/studia/${kierunek.id}/semestry`)
+      if (!Array.isArray(semestry) || semestry.length === 0) continue
+
+      const sortedSemestry = [...semestry].sort((a, b) => {
+        const aPreferred = Number(a) === 2 ? 0 : 1
+        const bPreferred = Number(b) === 2 ? 0 : 1
+        return aPreferred - bPreferred
+      })
+
+      for (const semestr of sortedSemestry) {
+        const specjalnosci = await getJson(`${apiBase}/studia/${kierunek.id}/specjalnosci?semestr=${semestr}`)
+        if (!Array.isArray(specjalnosci) || specjalnosci.length === 0) continue
+
+        const sortedSpecjalnosci = [...specjalnosci].sort((a, b) => {
+          const aPreferred = String(a?.nazwa || '').toLowerCase().includes('og')
+          const bPreferred = String(b?.nazwa || '').toLowerCase().includes('og')
+          if (aPreferred === bPreferred) return 0
+          return aPreferred ? -1 : 1
+        })
+
+        for (const spec of sortedSpecjalnosci) {
+          const rozklad = await getJson(`${apiBase}/rozklad?idStudiow=${kierunek.id}&semestr=${semestr}&idSpec=${spec.id}`)
+          if (!Array.isArray(rozklad) || rozklad.length === 0) continue
+
+          const grouped = new Map()
+          for (const entry of rozklad) {
+            if (entry?.idPrzedmiotu == null || !entry?.rodzaj || entry?.grupa == null) continue
+
+            const key = `${entry.idPrzedmiotu}_${entry.rodzaj}`
+            if (!grouped.has(key)) {
+              grouped.set(key, { groups: new Set(), entries: [] })
+            }
+
+            const value = grouped.get(key)
+            value.groups.add(Number(entry.grupa))
+            value.entries.push(entry)
+          }
+
+          for (const value of grouped.values()) {
+            if (value.groups.size < 2) continue
+
+            const groups = Array.from(value.groups).sort((a, b) => a - b)
+            const fromGroup = groups[0]
+            const toGroup = groups[1]
+            const baseEntry = value.entries.find((e) => Number(e.grupa) === fromGroup) || value.entries[0]
+
+            return {
+              idStudiow: kierunek.id,
+              semestr,
+              idSpecjalnosci: spec.id,
+              rodzaj: baseEntry.rodzaj,
+              fromGroup,
+              toGroup,
+              subjectLabel: baseEntry.przedmiotSkrot || baseEntry.przedmiot || '',
+            }
+          }
+        }
+      }
+    }
+
+    return null
+  }
+
+  let flowConfig = null
+  try {
+    flowConfig = await findFlowConfig()
+  } catch {
+    flowConfig = null
+  }
+
+  test.skip(!flowConfig, 'Brak dostepnego zestawu danych backendowych do stabilnego flow E2E (kierunek/semestr/spec + min. 2 grupy jednego przedmiotu).')
+
+  try {
+    await page.goto('http://localhost:5173/plan-studenta')
+
+    const kierunekSelect = page.locator('select').first()
+    const semestrSelect = page.locator('select').nth(1)
+    const specSelect = page.locator('select').nth(2)
+
+    await kierunekSelect.selectOption(String(flowConfig.idStudiow))
+    await semestrSelect.selectOption(String(flowConfig.semestr))
+    await expect(specSelect).toBeEnabled({ timeout: 10000 })
+    await specSelect.selectOption(String(flowConfig.idSpecjalnosci))
+
+    await expect(page.locator('.timetable-table')).toBeVisible({ timeout: 15000 })
+
+    const groupLabel = page.locator('label', { hasText: new RegExp(`^${escapeRegex(flowConfig.rodzaj)}:$`) }).first()
+    test.skip(await groupLabel.count() === 0, `Brak selektora grupy dla rodzaju ${flowConfig.rodzaj}.`)
+
+    const groupSelect = groupLabel.locator('..').locator('select')
+    await groupSelect.selectOption(String(flowConfig.fromGroup))
+    await expect(groupSelect).toHaveValue(String(flowConfig.fromGroup))
+
+    await page.getByRole('button', { name: 'Zapisz plan' }).click()
+    await page.locator('input[placeholder*="Moj plan"]').fill(planName)
+
+    const savePlanResponsePromise = page.waitForResponse((res) =>
+      res.url().includes('/api/schedules') &&
+      res.request().method() === 'POST' &&
+      res.ok(),
+    )
+
+    await page.locator('.fixed.inset-0').getByRole('button', { name: 'Zapisz' }).click()
+    const savePlanResponse = await savePlanResponsePromise
+    const savedPlan = await savePlanResponse.json()
+    createdScheduleId = savedPlan?.id ?? null
+
+    await expect(page.getByText(`Plan "${planName}" zostal zapisany!`)).toBeVisible()
+
+    await page.getByRole('link', { name: 'Moj plan', exact: true }).click()
+    await expect(page).toHaveURL(/\/moj-plan$/)
+
+    const scheduleCard = page.locator('div.bg-white.rounded-lg.shadow-sm.border').filter({ hasText: planName }).first()
+    await expect(scheduleCard).toBeVisible({ timeout: 15000 })
+    await scheduleCard.getByRole('button', { name: 'Otworz' }).click()
+
+    await expect(page.locator('.timetable-table')).toBeVisible({ timeout: 15000 })
+
+    let editedTile = page
+      .locator('.border-l-4')
+      .filter({
+        hasText: new RegExp(`${escapeRegex(flowConfig.subjectLabel)}.*${escapeRegex(flowConfig.rodzaj)}\\s+gr\\.\\s*${flowConfig.fromGroup}`, 'i'),
+      })
+      .first()
+
+    if (await editedTile.count() === 0) {
+      editedTile = page
+        .locator('.border-l-4')
+        .filter({
+          hasText: new RegExp(`${escapeRegex(flowConfig.rodzaj)}\\s+gr\\.\\s*${flowConfig.fromGroup}`, 'i'),
+        })
+        .first()
+    }
+
+    await expect(editedTile).toBeVisible({ timeout: 10000 })
+    await editedTile.click()
+    await page.getByRole('button', { name: 'Zmien grupe' }).click()
+    await page.getByRole('button', { name: new RegExp(`gr\\.\\s*${flowConfig.toGroup}\\b`, 'i') }).first().click()
+
+    await expect(page.getByText(/Niezapisane zmiany \([1-9]\d*\)/)).toBeVisible()
+
+    const saveOverridesRequest = page.waitForRequest((req) =>
+      req.url().includes('/api/schedules/') &&
+      req.url().includes('/overrides') &&
+      req.method() === 'PUT',
+    )
+
+    await page.getByRole('button', { name: 'Zapisz zmiany' }).click()
+    await saveOverridesRequest
+
+    await expect(page.getByText(/zapisanych nadpisan/)).toBeVisible()
+    await expect(page.getByText(/Niezapisane zmiany/)).toHaveCount(0)
+  } finally {
+    if (createdScheduleId != null) {
+      try {
+        await request.delete(`${apiBase}/schedules/${createdScheduleId}`)
+      } catch {
+        // Best-effort cleanup only.
+      }
+    }
+  }
+})
