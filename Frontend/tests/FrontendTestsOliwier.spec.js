@@ -586,13 +586,24 @@ test.describe("Oliwier - Tile Edit Menu & Schedule Tests", () => {
     const timeEditor = new TimeEditorModal(page);
     expect(await timeEditor.isOpen()).toBe(true);
 
-    await expect(timeEditor.daySelect).toBeVisible();
+    // Weryfikacja czy pola są aktywne
     await expect(timeEditor.daySelect).toBeEnabled();
-    await expect(timeEditor.startTimeSelect).toBeVisible();
     await expect(timeEditor.startTimeSelect).toBeEnabled();
-    await expect(timeEditor.endTimeSelect).toBeVisible();
     await expect(timeEditor.endTimeSelect).toBeEnabled();
-    await expect(timeEditor.applyButton).toBeVisible();
+    
+    // ZMIANA: Wybieramy nowy termin (np. dzień: Wtorek(2), od: 3, do: 4) i klikamy Zastosuj
+    await timeEditor.fillAndApply("2", "3", "4");
+
+    // Czekamy, aż okienko edycji się zamknie
+    await timeEditor.waitForClose();
+
+    // Sprawdzamy czy frontend zarejestrował zmianę (powinien pojawić się napis o niezapisanych zmianach)
+    const indicator = new UnsavedChangesIndicator(page);
+    expect(await indicator.isDirty()).toBe(true);
+
+    // ZMIANA: Dodajemy pauzę (np. 1.5 sekundy), żebyś na podglądzie (tryb --headed)
+    // zdążył zobaczyć na własne oczy, jak kafelek ładnie przeskakuje na nowe miejsce!
+    await page.waitForTimeout(1500);
   });
 
   // 7. DirtyState_ResetAfterSave - Unsaved changes indicator clears after save
