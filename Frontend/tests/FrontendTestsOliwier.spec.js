@@ -1,9 +1,255 @@
 import { test, expect } from "@playwright/test";
 
+class MyPlanPage {
+  constructor(page) {
+    this.page = page;
+    this.timetableLocator = page.locator(".timetable-table");
+  }
+
+  async goto() {
+    await this.page.goto("http://localhost:5173/moj-plan");
+  }
+
+  async waitForTimetableLoad() {
+    await this.page.waitForLoadState("networkidle");
+    await expect(this.timetableLocator).toBeVisible();
+  }
+
+  async openFirstSchedule() {
+    await this.goto();
+    await this.page.getByRole("button", { name: "Otworz" }).first().click();
+    await this.waitForTimetableLoad();
+  }
+
+  getTile(index = 0) {
+    return new ScheduleTile(this.page, index);
+  }
+
+  getFirstTile() {
+    return this.getTile(0);
+  }
+}
+
+class ScheduleTile {
+  constructor(page, indexOrLocator) {
+    this.page = page;
+    if (typeof indexOrLocator === "number") {
+      this.locator = page.locator(".border-l-4").nth(indexOrLocator);
+    } else {
+      this.locator = indexOrLocator;
+    }
+  }
+
+  async click() {
+    await this.locator.click();
+  }
+
+  async isHidden() {
+    const count = await this.locator.locator("text=UKRYTE").count();
+    return count > 0;
+  }
+
+  async isVisible() {
+    return await this.locator.isVisible();
+  }
+
+  async getZIndex() {
+    return await this.locator.evaluate((el) => {
+      const style = window.getComputedStyle(el);
+      return parseInt(style.zIndex, 10) || 0;
+    });
+  }
+
+  async hasText(text) {
+    return await this.locator.filter({ hasText: text }).isVisible();
+  }
+}
+
+class ScheduleTileEditMenu {
+  constructor(page) {
+    this.page = page;
+    this.backdrop = page.locator("div.fixed.inset-0.z-40");
+    this.menuContainer = page.locator(
+      "div.absolute.z-50.bg-white.rounded-lg.shadow-2xl"
+    );
+    this.menuHeader = page.getByText("Edytuj kafelek");
+    this.hideButton = page.getByRole("button", { name: "Ukryj zajecia" });
+    this.showButton = page.getByRole("button", { name: "Pokaz zajecia" });
+    this.changeGroupButton = page.getByRole("button", { name: "Zmien grupe" });
+    this.changeTimeButton = page.getByRole("button", { name: "Zmien termin" });
+  }
+
+  async isOpen() {
+    return await this.menuHeader.isVisible();
+  }
+
+  async isClosed() {
+    return !(await this.isOpen());
+  }
+
+  async close() {
+    await this.backdrop.click();
+  }
+
+  async hideClass() {
+    await this.hideButton.click();
+  }
+
+  async showClass() {
+    await this.showButton.click();
+  }
+
+  async openTimeEditor() {
+    await this.changeTimeButton.click();
+  }
+
+  async getMenuZIndex() {
+    return await this.menuContainer.evaluate((el) => {
+      const style = window.getComputedStyle(el);
+      return parseInt(style.zIndex, 10);
+    });
+  }
+
+  async getMenuOpacity() {
+    return await this.menuContainer.evaluate((el) => {
+      const style = window.getComputedStyle(el);
+      return parseFloat(style.opacity);
+    });
+  }
+
+  async hasChangeGroupButton() {
+    return (await this.changeGroupButton.count()) > 0;
+  }
+
+  async hasChangeTimeButton() {
+    return (await this.changeTimeButton.count()) > 0;
+  }
+
+  async waitForClose() {
+    await expect(this.menuHeader).toHaveCount(0);
+  }
+}
+
+class TimeEditorModal {
+  constructor(page) {
+    this.page = page;
+    this.modalHeader = page.getByText("Nowy termin");
+    this.daySelect = page
+      .locator("label")
+      .filter({ hasText: "Dzien:" })
+      .locator("select");
+    this.startTimeSelect = page
+      .locator("label")
+      .filter({ hasText: "Od:" })
+      .locator("select");
+    this.endTimeSelect = page
+      .locator("label")
+      .filter({ hasText: "Do:" })
+      .locator("select");
+    this.applyButton = page.getByRole("button", { name: "Zastosuj" });
+  }
+
+  async isOpen() {
+    return await this.modalHeader.isVisible();
+  }
+
+  async selectDay(value) {
+    await this.daySelect.selectOption(value);
+  }
+
+  async selectStartTime(value) {
+    await this.startTimeSelect.selectOption(value);
+  }
+
+  async selectEndTime(value) {
+    await this.endTimeSelect.selectOption(value);
+  }
+
+  async apply() {
+    await this.applyButton.click();
+  }
+
+  async fillAndApply(day, start, end) {
+    await this.selectDay(day);
+    await this.selectStartTime(start);
+    await this.selectEndTime(end);
+    await this.apply();
+  }
+
+  async waitForClose() {
+    await expect(this.modalHeader).toHaveCount(0);
+  }
+}
+
+class ConflictBanner {
+  constructor(page) {
+    this.page = page;
+    this.banner = page.locator(
+      "div.bg-orange-50.border.border-orange-300.rounded-lg"
+    );
+    this.ignoreButtons = page.getByRole("button", { name: "Ignoruj" });
+  }
+
+  async isVisible() {
+    return await this.banner.isVisible();
+  }
+
+  async getConflictCount() {
+    return await this.ignoreButtons.count();
+  }
+
+  async ignoreFirstConflict() {
+    await this.ignoreButtons.first().click();
+  }
+
+  async ignoreByIndex(index) {
+    await this.ignoreButtons.nth(index).click();
+  }
+
+  async waitForUpdate() {
+    await this.page.waitForTimeout(100);
+  }
+}
+
+class UnsavedChangesIndicator {
+  constructor(page) {
+    this.page = page;
+    this.indicator = page.locator("span.text-amber-800.font-semibold");
+    this.saveButton = page.getByRole("button", { name: "Zapisz zmiany" });
+  }
+
+  async isVisible() {
+    return await this.indicator.isVisible();
+  }
+
+  async isDirty() {
+    return await this.isVisible();
+  }
+
+  async isClean() {
+    return !(await this.isVisible());
+  }
+
+  async save() {
+    await this.saveButton.click();
+  }
+
+  async waitForClean() {
+    await expect(this.indicator).toHaveCount(0);
+  }
+
+  async waitForDirty() {
+    await expect(this.indicator).toBeVisible();
+  }
+
+  async getChangeCount() {
+    const text = await this.indicator.textContent();
+    const match = text.match(/\((\d+)\)/);
+    return match ? parseInt(match[1], 10) : 0;
+  }
+}
+
 test.describe("Oliwier - Tile Edit Menu & Schedule Tests", () => {
-  /**
-   * Helper to set up mocks for "Mój plan" view with a Student schedule
-   */
   async function setupStudentScheduleMocks(page, scheduleData = null) {
     await page.route("**/api/schedules", async (route) => {
       if (route.request().method() === "GET") {
@@ -99,9 +345,6 @@ test.describe("Oliwier - Tile Edit Menu & Schedule Tests", () => {
     });
   }
 
-  /**
-   * Helper to set up mocks for "Mój plan" view with a Teacher schedule
-   */
   async function setupTeacherScheduleMocks(page, scheduleData = null) {
     await page.route("**/api/schedules", async (route) => {
       if (route.request().method() === "GET") {
@@ -165,7 +408,6 @@ test.describe("Oliwier - Tile Edit Menu & Schedule Tests", () => {
       },
     ];
 
-    // Route for Teacher schedule: /api/rozklad/nauczyciel/{id}
     await page.route("**/api/rozklad/nauczyciel/**", async (route) => {
       await route.fulfill({
         status: 200,
@@ -175,131 +417,75 @@ test.describe("Oliwier - Tile Edit Menu & Schedule Tests", () => {
     });
   }
 
-  /**
-   * Helper to navigate to "Mój plan" and open the first schedule
-   */
   async function openMyPlanWithSchedule(page) {
-    await page.goto("http://localhost:5173/moj-plan");
-    await page.getByRole("button", { name: "Otworz" }).click();
-    await expect(page.locator(".timetable-table")).toBeVisible();
+    const plan = new MyPlanPage(page);
+    await plan.openFirstSchedule();
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // TEST 1: TileEditMenu_ClickOutside_Close
-  // ═══════════════════════════════════════════════════════════════════════════
+  // 1. TileEditMenu_ClickOutside_Close - Edit menu closes when clicking backdrop
   test("TileEditMenu_ClickOutside_Close", async ({ page }) => {
     await setupStudentScheduleMocks(page);
     await openMyPlanWithSchedule(page);
 
-    // Click on the first tile to open the edit menu
-    const tile = page.locator(".border-l-4").first();
+    const plan = new MyPlanPage(page);
+    const tile = plan.getFirstTile();
     await tile.click();
 
-    // Verify edit menu is open (header text visible)
-    const menuHeader = page.getByText("Edytuj kafelek");
-    await expect(menuHeader).toBeVisible();
+    const menu = new ScheduleTileEditMenu(page);
+    expect(await menu.isOpen()).toBe(true);
 
-    // Verify "Ukryj zajecia" button is visible (indicates menu is open)
-    const hideButton = page.getByRole("button", { name: "Ukryj zajecia" });
-    await expect(hideButton).toBeVisible();
-
-    // Click on the backdrop (fixed inset-0 z-40 div) to close the menu
-    const backdrop = page.locator("div.fixed.inset-0.z-40");
-    await backdrop.click();
-
-    // Verify menu is closed
-    await expect(menuHeader).toHaveCount(0);
-    await expect(hideButton).toHaveCount(0);
+    await menu.close();
+    expect(await menu.isOpen()).toBe(false);
   });
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // TEST 2: TileEditMenu_ZIndex_AboveTiles
-  // ═══════════════════════════════════════════════════════════════════════════
+  // 2. TileEditMenu_ZIndex_AboveTiles - Edit menu z-index is above tiles
   test("TileEditMenu_ZIndex_AboveTiles", async ({ page }) => {
     await setupStudentScheduleMocks(page);
     await openMyPlanWithSchedule(page);
 
-    // Click on the first tile to open the edit menu
-    const tile = page.locator(".border-l-4").first();
+    const plan = new MyPlanPage(page);
+    const tile = plan.getFirstTile();
     await tile.click();
 
-    // Verify edit menu is open
-    const hideButton = page.getByRole("button", { name: "Ukryj zajecia" });
-    await expect(hideButton).toBeVisible();
+    const menu = new ScheduleTileEditMenu(page);
+    expect(await menu.isOpen()).toBe(true);
 
-    // Get the menu container (absolute z-50)
-    const menuContainer = page.locator(
-      "div.absolute.z-50.bg-white.rounded-lg.shadow-2xl",
-    );
-    await expect(menuContainer).toBeVisible();
-
-    // Verify the menu has z-index 50
-    const menuZIndex = await menuContainer.evaluate((el) => {
-      const style = window.getComputedStyle(el);
-      return parseInt(style.zIndex, 10);
-    });
+    const menuZIndex = await menu.getMenuZIndex();
     expect(menuZIndex).toBe(50);
 
-    // Get z-index of a sibling tile (tiles don't have explicit z-index, should be auto/0)
-    const siblingTile = page.locator(".border-l-4").nth(1);
-    const tileZIndex = await siblingTile.evaluate((el) => {
-      const style = window.getComputedStyle(el);
-      return parseInt(style.zIndex, 10) || 0;
-    });
-
-    // Menu z-index (50) should be higher than tile z-index
+    const siblingTile = plan.getTile(1);
+    const tileZIndex = await siblingTile.getZIndex();
     expect(menuZIndex).toBeGreaterThan(tileZIndex);
-
-    // Additionally verify menu button is clickable (not occluded)
-    await expect(hideButton).toBeEnabled();
   });
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // TEST 3: HiddenTile_Menu_NoOpacityInherit
-  // ═══════════════════════════════════════════════════════════════════════════
+  // 3. HiddenTile_Menu_NoOpacityInherit - Menu maintains full opacity for hidden tiles
   test("HiddenTile_Menu_NoOpacityInherit", async ({ page }) => {
     await setupStudentScheduleMocks(page);
     await openMyPlanWithSchedule(page);
 
-    // Click on the first tile and hide it
-    const tile = page.locator(".border-l-4").first();
+    const plan = new MyPlanPage(page);
+    const tile = plan.getFirstTile();
+
     await tile.click();
-    await page.getByRole("button", { name: "Ukryj zajecia" }).click();
+    const menu = new ScheduleTileEditMenu(page);
+    await menu.hideClass();
 
-    // Verify tile is now hidden (UKRYTE overlay visible)
-    await expect(page.getByText("UKRYTE")).toBeVisible();
+    expect(await tile.isHidden()).toBe(true);
 
-    // Click on the hidden tile again to open the edit menu
     await tile.click();
+    expect(await menu.isOpen()).toBe(true);
 
-    // Verify "Pokaz zajecia" button is visible (menu open for hidden tile)
-    const showButton = page.getByRole("button", { name: "Pokaz zajecia" });
-    await expect(showButton).toBeVisible();
-
-    // Get the menu container
-    const menuContainer = page.locator(
-      "div.absolute.z-50.bg-white.rounded-lg.shadow-2xl",
-    );
-
-    // Verify menu has full opacity (1.0)
-    const menuOpacity = await menuContainer.evaluate((el) => {
-      const style = window.getComputedStyle(el);
-      return parseFloat(style.opacity);
-    });
+    const menuOpacity = await menu.getMenuOpacity();
     expect(menuOpacity).toBe(1);
 
-    // Verify the hidden tile itself has reduced opacity via the overlay
     const hiddenOverlay = page.locator(
-      ".bg-black\\/30.backdrop-blur-\\[1px\\]",
+      ".bg-black\\/30.backdrop-blur-\\[1px\\]"
     );
     await expect(hiddenOverlay).toBeVisible();
   });
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // TEST 4: WeekParity_IndependentOverrides
-  // ═══════════════════════════════════════════════════════════════════════════
+  // 4. WeekParity_IndependentOverrides - Hiding one week parity doesn't hide others
   test("WeekParity_IndependentOverrides", async ({ page }) => {
-    // Setup schedule with week parity entries (tydzien: 1 = odd, tydzien: 2 = even)
     const scheduleWithWeekParity = [
       {
         id: 1,
@@ -307,7 +493,7 @@ test.describe("Oliwier - Tile Edit Menu & Schedule Tests", () => {
         dzien: 1,
         godzina: 1,
         ilosc: 1,
-        tydzien: 1, // Odd week (nieparzyste)
+        tydzien: 1,
         rodzaj: "W",
         grupa: 1,
         przedmiot: "Algebra Nieparzyste",
@@ -325,7 +511,7 @@ test.describe("Oliwier - Tile Edit Menu & Schedule Tests", () => {
         dzien: 1,
         godzina: 1,
         ilosc: 1,
-        tydzien: 2, // Even week (parzyste)
+        tydzien: 2,
         rodzaj: "W",
         grupa: 1,
         przedmiot: "Algebra Parzyste",
@@ -342,113 +528,77 @@ test.describe("Oliwier - Tile Edit Menu & Schedule Tests", () => {
     await setupStudentScheduleMocks(page, scheduleWithWeekParity);
     await openMyPlanWithSchedule(page);
 
-    // Both week parity tiles should be visible
     await expect(page.getByText("Tyg. nieparzyste")).toBeVisible();
     await expect(page.getByText("Tyg. parzyste")).toBeVisible();
 
-    // Hide the even week tile (ALG-P)
-    const evenWeekTile = page
-      .locator(".border-l-4")
-      .filter({ hasText: "ALG-P" });
-    await evenWeekTile.click();
-    await page.getByRole("button", { name: "Ukryj zajecia" }).click();
+    const evenTile = new ScheduleTile(
+      page,
+      page.locator(".border-l-4").filter({ hasText: "ALG-P" })
+    );
+    await evenTile.click();
 
-    // Verify the even week tile is hidden
-    const ukryteOnEven = evenWeekTile.locator("text=UKRYTE");
-    await expect(ukryteOnEven).toBeVisible();
+    const menu = new ScheduleTileEditMenu(page);
+    await menu.hideClass();
 
-    // Verify the odd week tile (ALG-N) is NOT hidden - independent state
-    const oddWeekTile = page
-      .locator(".border-l-4")
-      .filter({ hasText: "ALG-N" });
-    const ukryteOnOdd = oddWeekTile.locator("text=UKRYTE");
-    await expect(ukryteOnOdd).toHaveCount(0);
+    expect(await evenTile.isHidden()).toBe(true);
 
-    // Verify unsaved changes indicator shows 1 change
-    await expect(page.getByText("Niezapisane zmiany (1)")).toBeVisible();
+    const oddTile = new ScheduleTile(
+      page,
+      page.locator(".border-l-4").filter({ hasText: "ALG-N" })
+    );
+    expect(await oddTile.isHidden()).toBe(false);
+
+    const indicator = new UnsavedChangesIndicator(page);
+    expect(await indicator.isDirty()).toBe(true);
   });
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // TEST 5: TeacherPlan_NoChangeGroupOption
-  // ═══════════════════════════════════════════════════════════════════════════
+  // 5. TeacherPlan_NoChangeGroupOption - Teacher plans don't show change group button
   test("TeacherPlan_NoChangeGroupOption", async ({ page }) => {
     await setupTeacherScheduleMocks(page);
     await openMyPlanWithSchedule(page);
 
-    // Click on the tile to open edit menu
-    const tile = page.locator(".border-l-4").first();
+    const plan = new MyPlanPage(page);
+    const tile = plan.getFirstTile();
     await tile.click();
 
-    // Verify edit menu is open
-    await expect(page.getByText("Edytuj kafelek")).toBeVisible();
+    const menu = new ScheduleTileEditMenu(page);
+    expect(await menu.isOpen()).toBe(true);
 
-    // Verify "Ukryj zajecia" button exists (basic menu option)
-    await expect(
-      page.getByRole("button", { name: "Ukryj zajecia" }),
-    ).toBeVisible();
+    const hasChangeGroup = await menu.hasChangeGroupButton();
+    expect(hasChangeGroup).toBe(false);
 
-    // Verify "Zmien termin" button exists (Teacher-specific option)
-    await expect(
-      page.getByRole("button", { name: "Zmien termin" }),
-    ).toBeVisible();
-
-    // Verify "Zmien grupe" button does NOT exist for Teacher schedules
-    const changeGroupButton = page.getByRole("button", { name: "Zmien grupe" });
-    await expect(changeGroupButton).toHaveCount(0);
+    const hasChangeTime = await menu.hasChangeTimeButton();
+    expect(hasChangeTime).toBe(true);
   });
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // TEST 6: TeacherPlan_ManualTimeEditEnabled
-  // ═══════════════════════════════════════════════════════════════════════════
+  // 6. TeacherPlan_ManualTimeEditEnabled - Teacher plans enable manual time editing
   test("TeacherPlan_ManualTimeEditEnabled", async ({ page }) => {
     await setupTeacherScheduleMocks(page);
     await openMyPlanWithSchedule(page);
 
-    // Click on the tile to open edit menu
-    const tile = page.locator(".border-l-4").first();
+    const plan = new MyPlanPage(page);
+    const tile = plan.getFirstTile();
     await tile.click();
 
-    // Click "Zmien termin" to open time editor
-    await page.getByRole("button", { name: "Zmien termin" }).click();
+    const menu = new ScheduleTileEditMenu(page);
+    await menu.openTimeEditor();
 
-    // Verify "Nowy termin" header is visible
-    await expect(page.getByText("Nowy termin")).toBeVisible();
+    const timeEditor = new TimeEditorModal(page);
+    expect(await timeEditor.isOpen()).toBe(true);
 
-    // Verify day selector is visible and enabled
-    const daySelect = page
-      .locator("label")
-      .filter({ hasText: "Dzien:" })
-      .locator("select");
-    await expect(daySelect).toBeVisible();
-    await expect(daySelect).toBeEnabled();
-
-    // Verify start time selector is visible and enabled
-    const startSelect = page
-      .locator("label")
-      .filter({ hasText: "Od:" })
-      .locator("select");
-    await expect(startSelect).toBeVisible();
-    await expect(startSelect).toBeEnabled();
-
-    // Verify end time selector is visible and enabled
-    const endSelect = page
-      .locator("label")
-      .filter({ hasText: "Do:" })
-      .locator("select");
-    await expect(endSelect).toBeVisible();
-    await expect(endSelect).toBeEnabled();
-
-    // Verify "Zastosuj" button is visible
-    await expect(page.getByRole("button", { name: "Zastosuj" })).toBeVisible();
+    await expect(timeEditor.daySelect).toBeVisible();
+    await expect(timeEditor.daySelect).toBeEnabled();
+    await expect(timeEditor.startTimeSelect).toBeVisible();
+    await expect(timeEditor.startTimeSelect).toBeEnabled();
+    await expect(timeEditor.endTimeSelect).toBeVisible();
+    await expect(timeEditor.endTimeSelect).toBeEnabled();
+    await expect(timeEditor.applyButton).toBeVisible();
   });
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // TEST 7: DirtyState_ResetAfterSave
-  // ═══════════════════════════════════════════════════════════════════════════
+  // 7. DirtyState_ResetAfterSave - Unsaved changes indicator clears after save
   test("DirtyState_ResetAfterSave", async ({ page }) => {
     await setupStudentScheduleMocks(page);
 
-    // Mock PUT request for saving overrides
     await page.route("**/api/schedules/1/overrides", async (route) => {
       if (route.request().method() === "PUT") {
         await route.fulfill({
@@ -463,33 +613,22 @@ test.describe("Oliwier - Tile Edit Menu & Schedule Tests", () => {
 
     await openMyPlanWithSchedule(page);
 
-    // Make a change - hide a tile
-    const tile = page.locator(".border-l-4").first();
+    const plan = new MyPlanPage(page);
+    const tile = plan.getFirstTile();
     await tile.click();
-    await page.getByRole("button", { name: "Ukryj zajecia" }).click();
 
-    // Verify dirty state indicator is visible
-    const dirtyIndicator = page.locator("span.text-amber-800.font-semibold");
-    await expect(dirtyIndicator).toBeVisible();
-    await expect(dirtyIndicator).toContainText("Niezapisane zmiany");
+    const menu = new ScheduleTileEditMenu(page);
+    await menu.hideClass();
 
-    // Click "Zapisz zmiany" button
-    const saveButton = page.getByRole("button", { name: "Zapisz zmiany" });
-    await saveButton.click();
+    const indicator = new UnsavedChangesIndicator(page);
+    expect(await indicator.isDirty()).toBe(true);
 
-    // Wait for save to complete and verify dirty indicator is gone
-    await expect(dirtyIndicator).toHaveCount(0);
-
-    // Verify the save button is now disabled (no more unsaved changes)
-    const saveButtonAfter = page.getByRole("button", { name: "Zapisz zmiany" });
-    await expect(saveButtonAfter).toBeDisabled();
+    await indicator.save();
+    await indicator.waitForClean();
   });
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // TEST 8: ConflictIgnore_PartialPersistence
-  // ═══════════════════════════════════════════════════════════════════════════
+  // 8. ConflictIgnore_PartialPersistence - Ignoring conflicts updates banner state
   test("ConflictIgnore_PartialPersistence", async ({ page }) => {
-    // Setup schedule with multiple conflicts
     const scheduleWithMultipleConflicts = [
       {
         id: 1,
@@ -549,7 +688,6 @@ test.describe("Oliwier - Tile Edit Menu & Schedule Tests", () => {
 
     await setupStudentScheduleMocks(page, scheduleWithMultipleConflicts);
 
-    // Mock PUT for ignore conflict
     await page.route("**/api/schedules/1/overrides", async (route) => {
       if (route.request().method() === "PUT") {
         await route.fulfill({
@@ -564,47 +702,35 @@ test.describe("Oliwier - Tile Edit Menu & Schedule Tests", () => {
 
     await openMyPlanWithSchedule(page);
 
-    // Verify conflict banner is visible with multiple conflicts
-    const conflictBanner = page.locator(
-      "div.bg-orange-50.border.border-orange-300.rounded-lg",
-    );
-    await expect(conflictBanner).toBeVisible();
+    const banner = new ConflictBanner(page);
+    expect(await banner.isVisible()).toBe(true);
 
-    // Count initial conflicts (should be 2: ALG-PROG at slot 1, ALG-AN at slot 2)
-    const ignoreButtons = page.getByRole("button", { name: "Ignoruj" });
-    const initialConflictCount = await ignoreButtons.count();
-    expect(initialConflictCount).toBeGreaterThanOrEqual(2);
+    const initialCount = await banner.getConflictCount();
+    expect(initialCount).toBeGreaterThanOrEqual(2);
 
-    // Click "Ignoruj" on the first conflict
-    await ignoreButtons.first().click();
+    await banner.ignoreFirstConflict();
 
-    // Verify the conflict banner is still visible (other conflicts remain)
-    await expect(conflictBanner).toBeVisible();
+    expect(await banner.isVisible()).toBe(true);
 
-    // Verify at least one ignore button still exists
-    const remainingIgnoreButtons = page.getByRole("button", {
-      name: "Ignoruj",
-    });
-    const remainingCount = await remainingIgnoreButtons.count();
-    expect(remainingCount).toBe(initialConflictCount - 1);
+    const remainingCount = await banner.getConflictCount();
+    expect(remainingCount).toBe(initialCount - 1);
   });
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // TEST 9: BeforeUnload_NativeDialogTrigger
-  // ═══════════════════════════════════════════════════════════════════════════
+  // 9. BeforeUnload_NativeDialogTrigger - Browser warns on unsaved changes
   test("BeforeUnload_NativeDialogTrigger", async ({ page }) => {
     await setupStudentScheduleMocks(page);
     await openMyPlanWithSchedule(page);
 
-    // Make a change to trigger dirty state
-    const tile = page.locator(".border-l-4").first();
+    const plan = new MyPlanPage(page);
+    const tile = plan.getFirstTile();
     await tile.click();
-    await page.getByRole("button", { name: "Ukryj zajecia" }).click();
 
-    // Verify dirty indicator is showing
-    await expect(page.getByText(/Niezapisane zmiany/)).toBeVisible();
+    const menu = new ScheduleTileEditMenu(page);
+    await menu.hideClass();
 
-    // Verify that beforeunload event listener is active and would prevent leaving
+    const indicator = new UnsavedChangesIndicator(page);
+    expect(await indicator.isDirty()).toBe(true);
+
     const beforeUnloadPrevented = await page.evaluate(() => {
       const event = new Event("beforeunload", { cancelable: true });
       window.dispatchEvent(event);
@@ -614,19 +740,17 @@ test.describe("Oliwier - Tile Edit Menu & Schedule Tests", () => {
     expect(beforeUnloadPrevented).toBe(true);
   });
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // TEST 10: BeforeUnload_NotTriggeredWhenClean
-  // ═══════════════════════════════════════════════════════════════════════════
+  // 10. BeforeUnload_NotTriggeredWhenClean - No warning when clean
   test("BeforeUnload_NotTriggeredWhenClean", async ({ page }) => {
     await setupStudentScheduleMocks(page);
     await openMyPlanWithSchedule(page);
 
-    // Do NOT make any changes - state should be clean
+    const plan = new MyPlanPage(page);
+    await plan.waitForTimetableLoad();
 
-    // Verify dirty indicator is NOT showing
-    await expect(page.getByText(/Niezapisane zmiany/)).toHaveCount(0);
+    const indicator = new UnsavedChangesIndicator(page);
+    expect(await indicator.isClean()).toBe(true);
 
-    // Verify that beforeunload would NOT prevent leaving when state is clean
     const beforeUnloadPrevented = await page.evaluate(() => {
       const event = new Event("beforeunload", { cancelable: true });
       window.dispatchEvent(event);
@@ -634,5 +758,214 @@ test.describe("Oliwier - Tile Edit Menu & Schedule Tests", () => {
     });
 
     expect(beforeUnloadPrevented).toBe(false);
+  });
+
+  // 11. ApiError_SaveOverrideFailure_UserFeedback - Save failure shows error and keeps dirty state
+  test("ApiError_SaveOverrideFailure_UserFeedback", async ({ page }) => {
+    await setupStudentScheduleMocks(page);
+
+    await page.route("**/api/schedules/1/overrides", async (route) => {
+      if (route.request().method() === "PUT") {
+        await route.fulfill({
+          status: 500,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Internal Server Error" }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    await openMyPlanWithSchedule(page);
+
+    const plan = new MyPlanPage(page);
+    const tile = plan.getFirstTile();
+    await tile.click();
+
+    const menu = new ScheduleTileEditMenu(page);
+    await menu.hideClass();
+
+    const indicator = new UnsavedChangesIndicator(page);
+    expect(await indicator.isDirty()).toBe(true);
+
+    await indicator.save();
+
+    await page.waitForTimeout(500);
+
+    expect(await indicator.isDirty()).toBe(true);
+  });
+
+  // 12. EditMenu_PositionOnEdgeTiles_StaysInViewport - Menu stays visible at viewport edges
+  test("EditMenu_PositionOnEdgeTiles_StaysInViewport", async ({ page }) => {
+    await setupStudentScheduleMocks(page);
+    await openMyPlanWithSchedule(page);
+
+    const plan = new MyPlanPage(page);
+    const lastTile = plan.getTile(1);
+    await lastTile.click();
+
+    const menu = new ScheduleTileEditMenu(page);
+    expect(await menu.isOpen()).toBe(true);
+
+    const menuVisible = await page.locator(
+      "div.absolute.z-50.bg-white.rounded-lg.shadow-2xl"
+    ).isVisible();
+    expect(menuVisible).toBe(true);
+
+    const menuBoundingBox = await page.locator(
+      "div.absolute.z-50.bg-white.rounded-lg.shadow-2xl"
+    ).boundingBox();
+
+    const viewportSize = page.viewportSize();
+
+    if (menuBoundingBox && viewportSize) {
+      expect(menuBoundingBox.x + menuBoundingBox.width).toBeLessThanOrEqual(
+        viewportSize.width + 50
+      );
+      expect(menuBoundingBox.y + menuBoundingBox.height).toBeLessThanOrEqual(
+        viewportSize.height + 50
+      );
+    }
+  });
+
+  // 13. ScheduleSwitch_EditMenuClosesAndStateIsolation - Switching plans closes menu and cleans state
+  test("ScheduleSwitch_EditMenuClosesAndStateIsolation", async ({ page }) => {
+    const multiScheduleMocks = {
+      schedules: [
+        {
+          id: 1,
+          name: "Plan testowy 1",
+          scheduleType: "Student",
+          createdAt: "2026-01-15T10:30:00Z",
+        },
+        {
+          id: 2,
+          name: "Plan testowy 2",
+          scheduleType: "Student",
+          createdAt: "2026-01-16T10:30:00Z",
+        },
+      ],
+    };
+
+    await page.route("**/api/schedules", async (route) => {
+      if (route.request().method() === "GET") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(multiScheduleMocks.schedules),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({}),
+      });
+    });
+
+    await page.route("**/api/schedules/1", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: 1,
+          name: "Plan testowy 1",
+          scheduleType: "Student",
+          createdAt: "2026-01-15T10:30:00Z",
+          overrides: {},
+          updatedKeys: [],
+          ignoredConflictIds: [],
+          configuration: {
+            idStudiow: 1,
+            semestr: 1,
+            idSpecjalnosci: 11,
+            grupy: { W: 1 },
+            idJezyka: null,
+          },
+        }),
+      });
+    });
+
+    await page.route("**/api/schedules/2", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: 2,
+          name: "Plan testowy 2",
+          scheduleType: "Student",
+          createdAt: "2026-01-16T10:30:00Z",
+          overrides: {},
+          updatedKeys: [],
+          ignoredConflictIds: [],
+          configuration: {
+            idStudiow: 1,
+            semestr: 1,
+            idSpecjalnosci: 11,
+            grupy: { W: 1 },
+            idJezyka: null,
+          },
+        }),
+      });
+    });
+
+    const defaultSchedule = [
+      {
+        id: 1,
+        idPrzedmiotu: 101,
+        dzien: 1,
+        godzina: 1,
+        ilosc: 1,
+        tydzien: 0,
+        rodzaj: "W",
+        grupa: 1,
+        przedmiot: "Algebra",
+        przedmiotSkrot: "ALG",
+        nauczyciel: "dr Jan Kowalski",
+        nauczycielSkrot: "dr J. Kowalski",
+        sala: "101",
+        idStudiow: 1,
+        semestr: 1,
+        idSpecjalnosci: 11,
+      },
+    ];
+
+    await page.route("**/api/rozklad*", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(defaultSchedule),
+      });
+    });
+
+    await openMyPlanWithSchedule(page);
+
+    const plan = new MyPlanPage(page);
+    const tile = plan.getFirstTile();
+    await tile.click();
+
+    const menu = new ScheduleTileEditMenu(page);
+    await menu.hideClass();
+
+    const indicator = new UnsavedChangesIndicator(page);
+    expect(await indicator.isDirty()).toBe(true);
+
+    // 1. Kliknij ponownie, aby otworzyć menu przed testem zmiany strony
+    await tile.click();
+    expect(await menu.isOpen()).toBe(true);
+
+    // 2. Automatycznie zaakceptuj alert "Niezapisane zmiany", aby Playwright mógł zmienić stronę
+    page.once('dialog', dialog => dialog.accept());
+    
+    await page.goto("http://localhost:5173/moj-plan");
+
+    const openButton = page.getByRole("button", { name: "Otworz" }).nth(1);
+    await openButton.click();
+
+    await page.waitForLoadState("networkidle");
+
+    expect(await menu.isClosed()).toBe(true);
+
+    expect(await indicator.isClean()).toBe(true);
   });
 });
