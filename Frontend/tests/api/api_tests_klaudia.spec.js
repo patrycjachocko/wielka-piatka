@@ -1,17 +1,7 @@
-/**
- * Testy API dla aplikacji Plan Studenta
- * Autor: Klaudia
- *
- * Testy wykorzystuja Playwright request API (prawdziwe zapytania HTTP)
- * Model: Service Object Model (SOM) - odpowiednik POM dla API
- *
- * UWAGA: Backend musi byc uruchomiony na http://localhost:5289
- * Komenda: cd Backend && dotnet run
- */
+/* Testy API Plan Studenta*/
 import { test, expect } from '@playwright/test';
 import { StudiaService } from './services/StudiaService.js';
 
-// Konfiguracja bazowego URL API - backend .NET na porcie 5289
 const BASE_URL = process.env.API_URL || 'http://localhost:5289';
 
 test.describe('API Tests - Studia', () => {
@@ -25,22 +15,17 @@ test.describe('API Tests - Studia', () => {
   test('GET /api/studia - zwraca poprawna strukture JSON z lista kierunkow', async () => {
     const { response, data } = await studiaService.getAll();
 
-    // Sprawdzenie statusu HTTP
     expect(response.status()).toBe(200);
     expect(response.headers()['content-type']).toContain('application/json');
 
-    // Sprawdzenie ze odpowiedz jest tablica
     expect(Array.isArray(data)).toBe(true);
 
-    // Jesli sa dane, sprawdz strukture pojedynczego obiektu
     if (data.length > 0) {
       const kierunek = data[0];
 
-      // Walidacja wymaganych pol (zgodnie z backendem .NET)
       expect(kierunek).toHaveProperty('id');
       expect(kierunek).toHaveProperty('nazwa');
 
-      // Walidacja typow danych
       expect(typeof kierunek.id).toBe('number');
       expect(typeof kierunek.nazwa).toBe('string');
     }
@@ -51,7 +36,6 @@ test.describe('API Tests - Studia', () => {
     const nieistniejaceId = 999999;
     const response = await request.get(`${BASE_URL}/api/studia/${nieistniejaceId}/semestry`);
 
-    // Backend zwraca 200 z pusta tablica zamiast 404
     expect(response.status()).toBe(200);
 
     const data = await response.json();
@@ -66,13 +50,11 @@ test.describe('API Tests - Studia', () => {
     expect(response.status()).toBe(200);
     expect(Array.isArray(data)).toBe(true);
 
-    // Filtrowanie po stronie klienta (backend nie ma endpointu search)
     const searchQuery = 'informatyka';
     const filtered = data.filter(kierunek =>
       kierunek.nazwa?.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
-    // Test logiki filtrowania - jesli sa kierunki z 'informatyka', powinny byc znalezione
     if (data.some(k => k.nazwa?.toLowerCase().includes(searchQuery))) {
       expect(filtered.length).toBeGreaterThan(0);
     }
@@ -92,14 +74,12 @@ test.describe('API Tests - Nauczyciele', () => {
     if (data.length > 0) {
       const nauczyciel = data[0];
 
-      // Walidacja struktury zgodnie z NauczycielDto
       expect(nauczyciel).toHaveProperty('id');
       expect(nauczyciel).toHaveProperty('nazwa');
       expect(nauczyciel).toHaveProperty('nazwisko');
       expect(nauczyciel).toHaveProperty('imie');
       expect(nauczyciel).toHaveProperty('tytul');
 
-      // Walidacja typow
       expect(typeof nauczyciel.id).toBe('number');
       expect(typeof nauczyciel.nazwa).toBe('string');
     }
@@ -112,7 +92,6 @@ test.describe('API Tests - Nauczyciele', () => {
 
     const blacklist = ['kn msi', 'alo', '9:30 - 11:00', '8:00 - 9:30', '11:00 - 12:30'];
 
-    // Sprawdz czy zadne wpisy nie zawieraja fraz z blacklisty
     data.forEach(nauczyciel => {
       blacklist.forEach(phrase => {
         expect(nauczyciel.nazwa?.toLowerCase()).not.toContain(phrase.toLowerCase());
@@ -144,7 +123,6 @@ test.describe('API Tests - Schedules (Zapisane plany)', () => {
 
   // TEST 6: POST /api/schedules - tworzenie nowego planu
   test('POST /api/schedules - tworzy nowy plan studenta', async ({ request }) => {
-    // Najpierw pobierz dostepne kierunki
     const studiaResponse = await request.get(`${BASE_URL}/api/studia`);
     const studia = await studiaResponse.json();
 
@@ -155,7 +133,6 @@ test.describe('API Tests - Schedules (Zapisane plany)', () => {
 
     const kierunek = studia[0];
 
-    // Pobierz semestry dla kierunku
     const semestryResponse = await request.get(`${BASE_URL}/api/studia/${kierunek.id}/semestry`);
     const semestry = await semestryResponse.json();
 
@@ -164,7 +141,6 @@ test.describe('API Tests - Schedules (Zapisane plany)', () => {
       return;
     }
 
-    // Pobierz specjalnosci
     const specResponse = await request.get(`${BASE_URL}/api/studia/${kierunek.id}/specjalnosci?semestr=${semestry[0]}`);
     const specjalnosci = await specResponse.json();
 
@@ -201,7 +177,7 @@ test.describe('API Tests - Schedules (Zapisane plany)', () => {
   // TEST 7: POST /api/schedules - walidacja - brak nazwy
   test('POST /api/schedules - zwraca 400 BadRequest przy braku nazwy', async ({ request }) => {
     const invalidSchedule = {
-      name: '',  // Pusta nazwa
+      name: '', 
       scheduleType: 'Student',
       configuration: {
         idStudiow: 1,
@@ -221,7 +197,6 @@ test.describe('API Tests - Schedules (Zapisane plany)', () => {
 
   // TEST 9: DELETE /api/schedules/{id} - usuwanie planu
   test('DELETE /api/schedules/{id} - usuwa plan i weryfikuje 404', async ({ request }) => {
-    // Najpierw utworz plan do usuniecia
     const studiaResponse = await request.get(`${BASE_URL}/api/studia`);
     const studia = await studiaResponse.json();
 
@@ -247,7 +222,6 @@ test.describe('API Tests - Schedules (Zapisane plany)', () => {
       return;
     }
 
-    // Utworz plan
     const createResponse = await request.post(`${BASE_URL}/api/schedules`, {
       data: {
         name: `Plan do usuniecia ${Date.now()}`,
@@ -265,18 +239,15 @@ test.describe('API Tests - Schedules (Zapisane plany)', () => {
     expect(createResponse.status()).toBe(201);
     const createdPlan = await createResponse.json();
 
-    // Usun plan
     const deleteResponse = await request.delete(`${BASE_URL}/api/schedules/${createdPlan.id}`);
     expect(deleteResponse.status()).toBe(204);
 
-    // Sprobuj pobrac usuniety plan - powinien zwrocic 404
     const getResponse = await request.get(`${BASE_URL}/api/schedules/${createdPlan.id}`);
     expect(getResponse.status()).toBe(404);
   });
 
   // TEST 10: GET /api/schedules/{id} - walidacja formatu dat ISO 8601
   test('GET /api/schedules/{id} - zawiera date createdAt w formacie ISO 8601', async ({ request }) => {
-    // Pobierz liste planow
     const listResponse = await request.get(`${BASE_URL}/api/schedules`);
     const schedules = await listResponse.json();
 
@@ -285,22 +256,18 @@ test.describe('API Tests - Schedules (Zapisane plany)', () => {
       return;
     }
 
-    // Pobierz szczegoly pierwszego planu
     const detailResponse = await request.get(`${BASE_URL}/api/schedules/${schedules[0].id}`);
     expect(detailResponse.status()).toBe(200);
 
     const schedule = await detailResponse.json();
     expect(schedule).toHaveProperty('createdAt');
 
-    // Walidacja formatu daty ISO 8601
     const createdAt = schedule.createdAt;
     expect(typeof createdAt).toBe('string');
 
-    // Sprawdz czy data jest parsowalna
     const parsedDate = new Date(createdAt);
     expect(parsedDate.toString()).not.toBe('Invalid Date');
 
-    // Sprawdz format ISO (YYYY-MM-DDTHH:mm:ss)
     expect(createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
   });
 });
@@ -308,7 +275,6 @@ test.describe('API Tests - Schedules (Zapisane plany)', () => {
 test.describe('API Tests - Rozklad i Grupy', () => {
   // TEST - GET /api/studia/{id}/grupy - pobieranie grup
   test('GET /api/studia/{id}/grupy - zwraca grupy dla kierunku/semestru/specjalnosci', async ({ request }) => {
-    // Najpierw pobierz kierunki
     const studiaResponse = await request.get(`${BASE_URL}/api/studia`);
     const studia = await studiaResponse.json();
 
@@ -319,7 +285,6 @@ test.describe('API Tests - Rozklad i Grupy', () => {
 
     const kierunek = studia[0];
 
-    // Pobierz semestry
     const semestryResponse = await request.get(`${BASE_URL}/api/studia/${kierunek.id}/semestry`);
     const semestry = await semestryResponse.json();
 
@@ -328,7 +293,6 @@ test.describe('API Tests - Rozklad i Grupy', () => {
       return;
     }
 
-    // Pobierz specjalnosci
     const specResponse = await request.get(`${BASE_URL}/api/studia/${kierunek.id}/specjalnosci?semestr=${semestry[0]}`);
     const specjalnosci = await specResponse.json();
 
@@ -337,7 +301,6 @@ test.describe('API Tests - Rozklad i Grupy', () => {
       return;
     }
 
-    // Pobierz grupy
     const grupyResponse = await request.get(
       `${BASE_URL}/api/studia/${kierunek.id}/grupy?semestr=${semestry[0]}&idSpec=${specjalnosci[0].id}`
     );

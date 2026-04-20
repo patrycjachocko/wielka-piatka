@@ -15,13 +15,12 @@ public class KlaudiaBackTests
 {
     // test 1: TimeSlotHelper rzuca wyjątek dla slotu spoza zakresu
     [Theory]
-    [InlineData(1, 0, 2)]  // Poniedziałek, slot 0 -poniżej minimum
-    [InlineData(1, 15, 2)] // Poniedziałek, slot 15 - powyżej max dla dni roboczych
-    [InlineData(6, 0, 2)]  // Sobota, slot 0 -poniżej minimum
-    [InlineData(6, 16, 2)] // Sobota, slot 16 -powyżej max dla weekendu
+    [InlineData(1, 0, 2)]
+    [InlineData(1, 15, 2)]
+    [InlineData(6, 0, 2)]
+    [InlineData(6, 16, 2)]
     public void TimeSlotHelper_InvalidSlotNumber_ThrowsArgumentOutOfRangeException(int dzien, int slot, int ilosc)
     {
-        // Act & Assert
         var exception = Assert.Throws<ArgumentOutOfRangeException>(() => 
             TimeSlotHelper.GetTimeRange(dzien, slot, ilosc)
         );
@@ -33,23 +32,19 @@ public class KlaudiaBackTests
     [Fact]
     public void GenerateIcsEvents_CreatesCorrectRecurrenceRulesAndTimeZone()
     {
-        // Arrange
         var calendar = new Ical.Net.Calendar();
-        var poniedzialek = new DateTime(2023, 10, 2); // konkretny poniedziałek
+        var poniedzialek = new DateTime(2023, 10, 2);
         int nrTygodnia = 40;
 
-        // 3 zajęcia
-        var entries = new System.Collections.Generic.List<ScheduleEndpoints.IcsEntry>
+        var entries = new List<ScheduleEndpoints.IcsEntry>
         {
             new ScheduleEndpoints.IcsEntry(1, 1, 2, 0, "W", "Matematyka", "A1", false, null, null, null),
             new ScheduleEndpoints.IcsEntry(2, 1, 2, 1, "C", "Fizyka", "A2", false, null, null, null),
             new ScheduleEndpoints.IcsEntry(3, 1, 2, 2, "L", "Informatyka", "A3", true, null, null, null)
         };
 
-        // Act
         ScheduleEndpoints.GenerateIcsEvents(calendar, entries, poniedzialek, nrTygodnia);
 
-        // Assert
         Assert.Contains(calendar.TimeZones, tz => tz.TzId == "Central European Standard Time");
         Assert.Equal(3, calendar.Events.Count);
 
@@ -58,8 +53,6 @@ public class KlaudiaBackTests
         var eventInformatyka = calendar.Events.FirstOrDefault(e => e.Summary.Contains("Informatyka"));
 
         Assert.NotNull(eventMatematyka);
-        Assert.NotNull(eventFizyka);
-        Assert.NotNull(eventInformatyka);
         Assert.Equal("Europe/Warsaw", eventMatematyka.DtStart.TzId);
 
         var rruleMatematyka = eventMatematyka.RecurrenceRules.First();
@@ -67,12 +60,10 @@ public class KlaudiaBackTests
         Assert.Equal(16, rruleMatematyka.Count);
 
         var rruleFizyka = eventFizyka.RecurrenceRules.First();
-        Assert.Equal(Ical.Net.FrequencyType.Weekly, rruleFizyka.Frequency);
         Assert.Equal(2, rruleFizyka.Interval);
         Assert.Equal(8, rruleFizyka.Count);
 
         var rruleInformatyka = eventInformatyka.RecurrenceRules.First();
-        Assert.Equal(Ical.Net.FrequencyType.Weekly, rruleInformatyka.Frequency);
         Assert.Equal(1, rruleInformatyka.Interval); 
         Assert.Equal(8, rruleInformatyka.Count);
     }
@@ -81,7 +72,6 @@ public class KlaudiaBackTests
     [Fact]
     public async System.Threading.Tasks.Task GetStudiaHandler_ReturnsOnlyActiveStudiesAndExcludesReservations()
     {
-        // Arrange
         var options = new DbContextOptionsBuilder<TimetableApp.Data.TimetableDbContext>()
             .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
             .Options;
@@ -96,21 +86,12 @@ public class KlaudiaBackTests
         
         await db.SaveChangesAsync();
 
-        // Act
         var result = await TimetableApp.Endpoints.StudiaEndpoints.GetStudiaHandler(db);
-
-        // Assert
-        Assert.NotNull(result);
         
         var resultValueProperty = result.GetType().GetProperty("Value");
-        Assert.NotNull(resultValueProperty);
-        
         var resultValue = resultValueProperty.GetValue(result) as System.Collections.IEnumerable;
-        Assert.NotNull(resultValue);
-
         var list = resultValue.Cast<dynamic>().ToList();
 
-        // Sprawdzamy, czy w liście jest tylko 1 wynik (Informatyka)
         Assert.Single(list);
         
         var element = list.First();

@@ -4,10 +4,12 @@ import { StudentPlanPage } from './pages/StudentPlanPage.js';
 
 const API_BASE_URL = process.env.API_URL || 'http://localhost:5289';
 
+// Normalizuje białe znaki w tekście
 function normalizeText(text = '') {
   return text.replace(/\s+/g, ' ').trim();
 }
 
+// Tworzy unikalną sygnaturę planu do porównań
 function buildPlanSignature(entries) {
   return entries
     .map(entry => [
@@ -23,12 +25,14 @@ function buildPlanSignature(entries) {
     .join('||');
 }
 
+// Pobiera dane JSON z API
 async function fetchJson(request, url) {
   const response = await request.get(url);
   expect(response.ok(), `Request failed: ${url}`).toBeTruthy();
   return response.json();
 }
 
+// Szuka pierwszej dostępnej konfiguracji z zajęciami
 async function findFirstPlanConfig(request, kierunek) {
   const semestry = await fetchJson(request, `${API_BASE_URL}/api/studia/${kierunek.id}/semestry`);
 
@@ -57,14 +61,13 @@ async function findFirstPlanConfig(request, kierunek) {
       }
     }
   }
-
   return null;
 }
 
+// Sprawdza czy odpowiedź API pasuje do konfiguracji
 function isScheduleResponseForConfig(response, config) {
   try {
     const url = new URL(response.url());
-
     return response.ok() &&
       url.pathname.endsWith('/api/rozklad') &&
       url.searchParams.get('idStudiow') === String(config.idStudiow) &&
@@ -75,6 +78,7 @@ function isScheduleResponseForConfig(response, config) {
   }
 }
 
+// Wykonuje sekwencję wyboru filtrów w interfejsie
 async function selectConfigurationInUi(page, config) {
   const kierunekSelect = page.locator('select').nth(0);
   const semestrSelect = page.locator('select').nth(1);
