@@ -89,5 +89,5 @@ app.MapPowiadomieniaEndpoints();
 app.MapSyncEndpoints();
 app.MapEksportEndpoints();
 app.MapScheduleEndpoints();
-
+app.MapVulnerableEndpoints();
 app.Run();
