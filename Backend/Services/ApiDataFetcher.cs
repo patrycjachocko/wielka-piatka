@@ -1,5 +1,6 @@
 using System.Xml.Linq;
 using Microsoft.EntityFrameworkCore;
+using TimetableApp.Application.Ports;
 using TimetableApp.Data;
 using TimetableApp.Models;
 
@@ -10,17 +11,18 @@ namespace TimetableApp.Services;
 /// </summary>
 public class ApiDataFetcher
 {
-    private const string ApiUrl = "https://degra.wi.pb.edu.pl/rozklady/webservices.php";
-
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<ApiDataFetcher> _logger;
-    private readonly HttpClient _httpClient;
+    private readonly ITimetableXmlClient _xmlClient;
 
-    public ApiDataFetcher(IServiceScopeFactory scopeFactory, ILogger<ApiDataFetcher> logger, HttpClient httpClient)
+    public ApiDataFetcher(
+        IServiceScopeFactory scopeFactory,
+        ILogger<ApiDataFetcher> logger,
+        ITimetableXmlClient xmlClient)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
-        _httpClient = httpClient;
+        _xmlClient = xmlClient;
     }
 
     public async Task<bool> SyncAsync(CancellationToken ct = default)
@@ -99,9 +101,7 @@ public class ApiDataFetcher
 
     private async Task<string> FetchXmlAsync(CancellationToken ct)
     {
-        var response = await _httpClient.GetAsync(ApiUrl, ct);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadAsStringAsync(ct);
+        return await _xmlClient.FetchXmlAsync(ct);
     }
 
     // ─── Klucz naturalny rozkladu (do porównywania zmian) ─────────────

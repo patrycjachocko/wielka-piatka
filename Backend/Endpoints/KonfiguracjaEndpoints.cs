@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using TimetableApp.Application.Ports;
 using TimetableApp.Data;
 using TimetableApp.Models;
 
@@ -10,12 +11,9 @@ public static class KonfiguracjaEndpoints
     {
         var group = app.MapGroup("/api/konfiguracja");
 
-        // Pobierz aktualną konfigurację
-        group.MapGet("/", async (TimetableDbContext db) =>
+        group.MapGet("/", async (IUserConfigurationRepository configurations) =>
         {
-            var config = await db.KonfiguracjaUzytkownika
-                .Include(k => k.WyboryGrup)
-                .FirstOrDefaultAsync();
+            var config = await configurations.GetCurrentAsync();
 
             if (config == null) return Results.Ok((object?)null);
 
@@ -35,49 +33,32 @@ public static class KonfiguracjaEndpoints
             });
         });
 
-        // Zapisz / aktualizuj konfigurację
-        group.MapPost("/", KonfiguracjaHandlers.ZapiszKonfiguracjeHandler);
+        group.MapPost("/", async (KonfiguracjaRequest request, IUserConfigurationRepository configurations) =>
+            await KonfiguracjaHandlers.ZapiszKonfiguracjeHandler(request, configurations));
 
-        // Dodaj nadpisanie grupy dla przedmiotu (personalizacja)
-        group.MapPost("/nadpisanie", async (NadpisanieRequest request, TimetableDbContext db) =>
+        group.MapPost("/nadpisanie", async (NadpisanieRequest request, IUserConfigurationRepository configurations) =>
         {
-            var config = await db.KonfiguracjaUzytkownika.FirstOrDefaultAsync();
+            var config = await configurations.GetCurrentAsync();
+
             if (config == null) return Results.BadRequest("Brak konfiguracji");
 
-            // Usuń ewentualne istniejące nadpisanie dla tego przedmiotu i rodzaju
-            var istniejace = await db.WyboryGrup
-                .Where(w => w.IdKonfiguracji == config.Id
-                         && w.RodzajZajec == request.RodzajZajec
-                         && w.IdPrzedmiotu == request.IdPrzedmiotu)
-                .ToListAsync();
-            db.WyboryGrup.RemoveRange(istniejace);
-
-            db.WyboryGrup.Add(new WyborGrupy
-            {
-                IdKonfiguracji = config.Id,
-                RodzajZajec = request.RodzajZajec,
-                NumerGrupy = request.NumerGrupy,
-                IdPrzedmiotu = request.IdPrzedmiotu
-            });
-
-            await db.SaveChangesAsync();
+            config.UstawWyborGrupy(request.RodzajZajec, request.NumerGrupy, request.IdPrzedmiotu);
+            await configurations.SaveChangesAsync();
             return Results.Ok();
         });
 
-        // Usuń nadpisanie grupy
-        group.MapDelete("/nadpisanie/{id:int}", async (int id, TimetableDbContext db) =>
+        group.MapDelete("/nadpisanie/{id:int}", async (int id, IUserConfigurationRepository configurations) =>
         {
-            var nadpisanie = await db.WyboryGrup.FindAsync(id);
-            if (nadpisanie == null) return Results.NotFound();
+            var config = await configurations.GetCurrentAsync();
 
-            db.WyboryGrup.Remove(nadpisanie);
-            await db.SaveChangesAsync();
+            if (config == null || !config.UsunWyborGrupy(id))
+                return Results.NotFound();
+
+            await configurations.SaveChangesAsync();
             return Results.Ok();
         });
     }
 }
-
-// ─── Request DTOs ─────────────────────────────────────────────────
 
 public record KonfiguracjaRequest(
     int IdStudiow,
@@ -98,45 +79,25 @@ public record NadpisanieRequest(
     int IdPrzedmiotu
 );
 
-// ─── HANDLER DO TESTÓW JEDNOSTKOWYCH ─────────────────────────────────────
-
 public static class KonfiguracjaHandlers
 {
-    /// <summary>
-    /// Handler dla POST /api/konfiguracja.
-    /// Wyciągnięty do publicznej metody statycznej, aby umożliwić testy jednostkowe.
-    /// WAŻNE: Usuwa starą konfigurację i zapisuje nową (założenie: jeden lokalny użytkownik).
-    /// </summary>
-    public static async Task<IResult> ZapiszKonfiguracjeHandler(KonfiguracjaRequest request, TimetableDbContext db)
+    public static async Task<IResult> ZapiszKonfiguracjeHandler(KonfiguracjaRequest request, IUserConfigurationRepository configurations)
     {
-        // Usuń starą konfigurację (lokalnie jeden użytkownik)
-        var stara = await db.KonfiguracjaUzytkownika
-            .Include(k => k.WyboryGrup)
-            .FirstOrDefaultAsync();
+        var nowa = KonfiguracjaUzytkownika.Utworz(
+            request.IdStudiow,
+            request.Semestr,
+            request.IdSpecjalnosci,
+            request.WyboryGrup.Select(g => new WyborGrupySpec(
+                g.RodzajZajec,
+                g.NumerGrupy,
+                g.IdPrzedmiotu)));
 
-        if (stara != null)
-        {
-            db.WyboryGrup.RemoveRange(stara.WyboryGrup);
-            db.KonfiguracjaUzytkownika.Remove(stara);
-            await db.SaveChangesAsync();
-        }
-
-        var nowa = new KonfiguracjaUzytkownika
-        {
-            IdStudiow = request.IdStudiow,
-            Semestr = request.Semestr,
-            IdSpecjalnosci = request.IdSpecjalnosci,
-            WyboryGrup = request.WyboryGrup.Select(g => new WyborGrupy
-            {
-                RodzajZajec = g.RodzajZajec,
-                NumerGrupy = g.NumerGrupy,
-                IdPrzedmiotu = g.IdPrzedmiotu
-            }).ToList()
-        };
-
-        db.KonfiguracjaUzytkownika.Add(nowa);
-        await db.SaveChangesAsync();
+        await configurations.ReplaceCurrentAsync(nowa);
+        await configurations.SaveChangesAsync();
 
         return Results.Ok(new { nowa.Id });
     }
+
+    public static Task<IResult> ZapiszKonfiguracjeHandler(KonfiguracjaRequest request, TimetableDbContext db)
+        => ZapiszKonfiguracjeHandler(request, new TimetableApp.Infrastructure.Persistence.EfUserConfigurationRepository(db));
 }

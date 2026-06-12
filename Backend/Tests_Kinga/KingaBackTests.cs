@@ -101,4 +101,63 @@ public class KingaBackTests : IDisposable
         Assert.Equal("?", row.NauczycielSkrot);
         Assert.Equal("?", row.Sala);
     }
+
+    // test4
+    [Fact]
+    public void SavedSchedule_DetectsUpdatedEntries_UsingDomainSnapshot()
+    {
+        var savedSnapshot = ScheduleSnapshot.From(new Dictionary<string, long>
+        {
+            ["zajecia-1"] = 100,
+            ["zajecia-2"] = 200
+        });
+
+        var schedule = SavedSchedule.Create(
+            " Moj plan ",
+            SavedScheduleType.Student,
+            """{"idStudiow":1,"semestr":1,"idSpecjalnosci":0,"grupy":{}}""",
+            savedSnapshot,
+            DateTime.UtcNow);
+
+        var currentSnapshot = ScheduleSnapshot.From(new Dictionary<string, long>
+        {
+            ["zajecia-1"] = 100,
+            ["zajecia-2"] = 250,
+            ["zajecia-3"] = 300
+        });
+
+        var updatedKeys = schedule.FindUpdatedKeys(currentSnapshot);
+
+        Assert.Equal("Moj plan", schedule.Name);
+        Assert.Contains("zajecia-2", updatedKeys);
+        Assert.Contains("zajecia-3", updatedKeys);
+        Assert.DoesNotContain("zajecia-1", updatedKeys);
+    }
+
+    // test5
+    [Fact]
+    public void SavedSchedule_ReplaceOverrides_RemovesNoOpOverrides()
+    {
+        var schedule = SavedSchedule.Create(
+            "Plan z nadpisaniami",
+            SavedScheduleType.Student,
+            """{"idStudiow":1,"semestr":1,"idSpecjalnosci":0,"grupy":{}}""",
+            ScheduleSnapshot.From(new Dictionary<string, long>()),
+            DateTime.UtcNow);
+
+        var count = schedule.ReplaceOverrides(
+            new Dictionary<string, EntryOverride>
+            {
+                ["noop"] = new EntryOverride(),
+                ["hidden"] = new EntryOverride { Hidden = true },
+                ["group"] = new EntryOverride { OverriddenGroup = 3 }
+            },
+            ["conflict-a--conflict-b"]);
+
+        Assert.Equal(2, count);
+        Assert.False(schedule.Overrides.ContainsKey("noop"));
+        Assert.True(schedule.Overrides.ContainsKey("hidden"));
+        Assert.True(schedule.Overrides.ContainsKey("group"));
+        Assert.Contains("conflict-a--conflict-b", schedule.IgnoredConflictIds);
+    }
 }

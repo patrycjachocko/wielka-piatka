@@ -1,6 +1,9 @@
 using Microsoft.EntityFrameworkCore;
+using TimetableApp.Application.Ports;
 using TimetableApp.Data;
 using TimetableApp.Endpoints;
+using TimetableApp.Infrastructure.External;
+using TimetableApp.Infrastructure.Persistence;
 using TimetableApp.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -9,8 +12,11 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<TimetableDbContext>(options =>
     options.UseSqlite("Data Source=timetable.db"));
 
-// HttpClient dla pobierania XML z API
-builder.Services.AddHttpClient<ApiDataFetcher>();
+// Porty aplikacyjne i adaptery infrastruktury
+builder.Services.AddScoped<IUserConfigurationRepository, EfUserConfigurationRepository>();
+
+// Adapter HTTP dla pobierania XML z API uczelni
+builder.Services.AddHttpClient<ITimetableXmlClient, DegraTimetableXmlClient>();
 builder.Services.AddScoped<ApiDataFetcher>();
 
 // Background sync co godzinę

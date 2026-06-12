@@ -1,0 +1,15 @@
+.git
+.idea
+.vs
+.vscode
+**/bin
+**/obj
+**/node_modules
+**/dist
+**/playwright-report
+**/test-results
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/*.sqlite
+**/*.sqlite3

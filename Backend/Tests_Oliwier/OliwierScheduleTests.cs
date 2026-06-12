@@ -231,17 +231,15 @@ public class OliwierScheduleTests
         );
 
         // Stara konfiguracja
-        var staraKonfiguracja = new KonfiguracjaUzytkownika
-        {
-            IdStudiow = 1,
-            Semestr = 3,
-            IdSpecjalnosci = 10,
-            WyboryGrup = new List<WyborGrupy>
+        var staraKonfiguracja = KonfiguracjaUzytkownika.Utworz(
+            1,
+            3,
+            10,
+            new List<WyborGrupySpec>
             {
-                new() { RodzajZajec = "W", NumerGrupy = 1 },
-                new() { RodzajZajec = "C", NumerGrupy = 2 },
-            }
-        };
+                new("W", 1, null),
+                new("C", 2, null),
+            });
         db.KonfiguracjaUzytkownika.Add(staraKonfiguracja);
         await db.SaveChangesAsync();
 

@@ -14,6 +14,4 @@ public class Powiadomienie
     public int? IdPrzedmiotu { get; set; }
     public long PoprzedniaAktualizacja { get; set; }
     public long NowaAktualizacja { get; set; }
-
-    public Przedmiot? Przedmiot { get; set; }
 }

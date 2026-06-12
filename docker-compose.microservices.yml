@@ -1,0 +1,58 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: wielka-piatka-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+
+  timetable-service:
+    build:
+      context: .
+      dockerfile: Microservices/TimetableService/Dockerfile
+    container_name: wielka-piatka-timetable-service
+    depends_on:
+      - rabbitmq
+    ports:
+      - "5289:8080"
+    environment:
+      ASPNETCORE_URLS: "http://+:8080"
+      ConnectionStrings__TimetableDb: "Data Source=/data/timetable-service.db"
+      RabbitMq__ManagementBaseUrl: "http://rabbitmq:15672"
+      RabbitMq__UserName: "guest"
+      RabbitMq__Password: "guest"
+      RabbitMq__Exchange: "timetable.events"
+      Sync__RunOnStartup: "true"
+      Sync__InitialDelaySeconds: "10"
+      Sync__IntervalMinutes: "60"
+    volumes:
+      - timetable-data:/data
+
+  plans-service:
+    build:
+      context: .
+      dockerfile: Microservices/PlansService/Dockerfile
+    container_name: wielka-piatka-plans-service
+    depends_on:
+      - rabbitmq
+      - timetable-service
+    ports:
+      - "5290:8080"
+    environment:
+      ASPNETCORE_URLS: "http://+:8080"
+      PLANS_STORE_PATH: "/data/plans-store.json"
+      RabbitMq__ManagementBaseUrl: "http://rabbitmq:15672"
+      RabbitMq__UserName: "guest"
+      RabbitMq__Password: "guest"
+      RabbitMq__Exchange: "timetable.events"
+      EventConsumer__QueueName: "plans-service.timetable-snapshot"
+      EventConsumer__PollingSeconds: "5"
+    volumes:
+      - plans-data:/data
+
+volumes:
+  timetable-data:
+  plans-data:

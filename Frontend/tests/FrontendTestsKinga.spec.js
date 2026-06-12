@@ -743,7 +743,7 @@ test('Zapis planu studenta wysyla poprawny payload i trimuje nazwe', async ({ pa
   })
 })
 
-// test12
+// test12 - do pokazania
 test('W widoku Moj plan cofanie i ponawianie przywraca nadpisania', async ({ page }) => {
   await page.route('**/api/schedules', async (route) => {
     if (route.request().method() === 'GET') {

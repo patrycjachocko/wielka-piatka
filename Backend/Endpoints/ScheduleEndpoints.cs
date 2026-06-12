@@ -44,7 +44,7 @@ public static class ScheduleEndpoints
     /// <summary>
     /// Build a snapshot dictionary of DataAktualizacji for entries matching a Student config.
     /// </summary>
-    private static async Task<Dictionary<string, long>> BuildStudentSnapshotAsync(
+    private static async Task<ScheduleSnapshot> BuildStudentSnapshotAsync(
         TimetableDbContext db, StudentConfig config, CancellationToken ct = default)
     {
         var entries = await db.Rozklady
@@ -63,13 +63,13 @@ public static class ScheduleEndpoints
             return true;
         });
 
-        return filtered.ToDictionary(KluczRozkladu, r => r.DataAktualizacji);
+        return ScheduleSnapshot.From(filtered.ToDictionary(KluczRozkladu, r => r.DataAktualizacji));
     }
 
     /// <summary>
     /// Build a snapshot dictionary for Teacher config.
     /// </summary>
-    private static async Task<Dictionary<string, long>> BuildTeacherSnapshotAsync(
+    private static async Task<ScheduleSnapshot> BuildTeacherSnapshotAsync(
         TimetableDbContext db, TeacherConfig config, CancellationToken ct = default)
     {
         var entries = await db.Rozklady
@@ -77,18 +77,7 @@ public static class ScheduleEndpoints
             .AsNoTracking()
             .ToListAsync(ct);
 
-        return entries.ToDictionary(KluczRozkladu, r => r.DataAktualizacji);
-    }
-
-    /// <summary>
-    /// Parse OverridesJson from a schedule, returning empty dict if null/empty.
-    /// </summary>
-    private static Dictionary<string, EntryOverride> ParseOverrides(string? json)
-    {
-        if (string.IsNullOrEmpty(json))
-            return new();
-        return JsonSerializer.Deserialize<Dictionary<string, EntryOverride>>(json, CaseInsensitive)
-            ?? new();
+        return ScheduleSnapshot.From(entries.ToDictionary(KluczRozkladu, r => r.DataAktualizacji));
     }
 
     public static void MapScheduleEndpoints(this WebApplication app)
@@ -101,14 +90,14 @@ public static class ScheduleEndpoints
             if (string.IsNullOrWhiteSpace(req.Name))
                 return Results.BadRequest("Nazwa planu jest wymagana");
 
-            if (req.ScheduleType != "Student" && req.ScheduleType != "Teacher")
+            if (req.ScheduleType != SavedScheduleType.Student && req.ScheduleType != SavedScheduleType.Teacher)
                 return Results.BadRequest("Typ planu musi byc 'Student' lub 'Teacher'");
 
             // Build update snapshot from current DB data
-            Dictionary<string, long> snapshot;
+            ScheduleSnapshot snapshot;
             var configJson = req.Configuration.GetRawText();
 
-            if (req.ScheduleType == "Student")
+            if (req.ScheduleType == SavedScheduleType.Student)
             {
                 var config = JsonSerializer.Deserialize<StudentConfig>(configJson, CaseInsensitive);
                 if (config == null) return Results.BadRequest("Niepoprawna konfiguracja");
@@ -121,14 +110,12 @@ public static class ScheduleEndpoints
                 snapshot = await BuildTeacherSnapshotAsync(db, config);
             }
 
-            var schedule = new SavedSchedule
-            {
-                Name = req.Name.Trim(),
-                ScheduleType = req.ScheduleType,
-                ConfigurationJson = configJson,
-                CreatedAt = DateTime.UtcNow,
-                UpdateSnapshotsJson = JsonSerializer.Serialize(snapshot),
-            };
+            var schedule = SavedSchedule.Create(
+                req.Name,
+                req.ScheduleType,
+                configJson,
+                snapshot,
+                DateTime.UtcNow);
 
             db.SavedSchedules.Add(schedule);
             await db.SaveChangesAsync();
@@ -160,58 +147,24 @@ public static class ScheduleEndpoints
             if (schedule == null)
                 return Results.NotFound();
 
-            // Parse saved snapshot
-            Dictionary<string, long>? savedSnapshot = null;
-            if (!string.IsNullOrEmpty(schedule.UpdateSnapshotsJson))
-            {
-                savedSnapshot = JsonSerializer.Deserialize<Dictionary<string, long>>(schedule.UpdateSnapshotsJson);
-            }
-
             // Build current snapshot from live DB
-            Dictionary<string, long> currentSnapshot;
-            if (schedule.ScheduleType == "Student")
+            ScheduleSnapshot currentSnapshot;
+            if (schedule.IsStudentPlan)
             {
                 var config = JsonSerializer.Deserialize<StudentConfig>(schedule.ConfigurationJson, CaseInsensitive);
                 currentSnapshot = config != null
                     ? await BuildStudentSnapshotAsync(db, config)
-                    : new();
+                    : ScheduleSnapshot.From(new Dictionary<string, long>());
             }
             else
             {
                 var config = JsonSerializer.Deserialize<TeacherConfig>(schedule.ConfigurationJson, CaseInsensitive);
                 currentSnapshot = config != null
                     ? await BuildTeacherSnapshotAsync(db, config)
-                    : new();
+                    : ScheduleSnapshot.From(new Dictionary<string, long>());
             }
 
-            // Find updated keys: current timestamp > saved timestamp, or new entries
-            var updatedKeys = new HashSet<string>();
-            if (savedSnapshot != null)
-            {
-                foreach (var (key, currentTs) in currentSnapshot)
-                {
-                    if (savedSnapshot.TryGetValue(key, out var savedTs))
-                    {
-                        if (currentTs > savedTs)
-                            updatedKeys.Add(key);
-                    }
-                    else
-                    {
-                        // New entry not in saved snapshot
-                        updatedKeys.Add(key);
-                    }
-                }
-            }
-
-            // Parse overrides
-            var overrides = ParseOverrides(schedule.OverridesJson);
-
-            // Parse ignored conflict IDs
-            List<string> ignoredConflictIds = new();
-            if (!string.IsNullOrEmpty(schedule.IgnoredConflictIdsJson))
-            {
-                ignoredConflictIds = JsonSerializer.Deserialize<List<string>>(schedule.IgnoredConflictIdsJson) ?? new();
-            }
+            var updatedKeys = schedule.FindUpdatedKeys(currentSnapshot);
 
             return Results.Ok(new
             {
@@ -219,10 +172,10 @@ public static class ScheduleEndpoints
                 schedule.Name,
                 schedule.ScheduleType,
                 schedule.CreatedAt,
-                Configuration = JsonSerializer.Deserialize<JsonElement>(schedule.ConfigurationJson),
+                schedule.Configuration,
                 UpdatedKeys = updatedKeys,
-                Overrides = overrides,
-                IgnoredConflictIds = ignoredConflictIds,
+                Overrides = schedule.Overrides,
+                IgnoredConflictIds = schedule.IgnoredConflictIds,
             });
         });
 
@@ -233,19 +186,10 @@ public static class ScheduleEndpoints
             if (schedule == null)
                 return Results.NotFound();
 
-            // Remove entries where override is a no-op
-            var cleaned = req.Overrides
-                .Where(kv => kv.Value.Hidden || kv.Value.OverriddenGroup.HasValue || kv.Value.ForceWeekly
-                    || kv.Value.CustomDay.HasValue || kv.Value.CustomStartSlot.HasValue || kv.Value.CustomDuration.HasValue)
-                .ToDictionary(kv => kv.Key, kv => kv.Value);
-
-            schedule.OverridesJson = JsonSerializer.Serialize(cleaned);
-            schedule.IgnoredConflictIdsJson = req.IgnoredConflictIds is { Count: > 0 }
-                ? JsonSerializer.Serialize(req.IgnoredConflictIds)
-                : null;
+            var count = schedule.ReplaceOverrides(req.Overrides, req.IgnoredConflictIds);
             await db.SaveChangesAsync();
 
-            return Results.Ok(new { saved = true, count = cleaned.Count });
+            return Results.Ok(new { saved = true, count });
         });
 
         // GET /api/schedules/{id}/available-groups — get available groups for override dropdowns
@@ -257,7 +201,7 @@ public static class ScheduleEndpoints
                 return Results.NotFound();
 
             List<object> groups;
-            if (schedule.ScheduleType == "Student")
+            if (schedule.IsStudentPlan)
             {
                 var config = JsonSerializer.Deserialize<StudentConfig>(schedule.ConfigurationJson, CaseInsensitive);
                 if (config == null)
@@ -311,23 +255,23 @@ public static class ScheduleEndpoints
                 return Results.NotFound();
 
             // Build fresh snapshot from current DB state
-            Dictionary<string, long> freshSnapshot;
-            if (schedule.ScheduleType == "Student")
+            ScheduleSnapshot freshSnapshot;
+            if (schedule.IsStudentPlan)
             {
                 var config = JsonSerializer.Deserialize<StudentConfig>(schedule.ConfigurationJson, CaseInsensitive);
                 freshSnapshot = config != null
                     ? await BuildStudentSnapshotAsync(db, config)
-                    : new();
+                    : ScheduleSnapshot.From(new Dictionary<string, long>());
             }
             else
             {
                 var config = JsonSerializer.Deserialize<TeacherConfig>(schedule.ConfigurationJson, CaseInsensitive);
                 freshSnapshot = config != null
                     ? await BuildTeacherSnapshotAsync(db, config)
-                    : new();
+                    : ScheduleSnapshot.From(new Dictionary<string, long>());
             }
 
-            schedule.UpdateSnapshotsJson = JsonSerializer.Serialize(freshSnapshot);
+            schedule.ConfirmChanges(freshSnapshot);
             await db.SaveChangesAsync();
 
             return Results.Ok(new { confirmed = true });
@@ -340,19 +284,13 @@ public static class ScheduleEndpoints
             if (schedule == null)
                 return Results.NotFound();
 
-            if (string.IsNullOrEmpty(schedule.UpdateSnapshotsJson))
+            if (schedule.SavedSnapshot.IsEmpty)
                 return Results.BadRequest("Brak zapisanych snapshotow");
 
-            var snapshot = JsonSerializer.Deserialize<Dictionary<string, long>>(schedule.UpdateSnapshotsJson);
-            if (snapshot == null)
-                return Results.BadRequest("Niepoprawny format snapshotow");
-
-            // Subtract 100000 from all timestamps to simulate outdated data
-            var aged = snapshot.ToDictionary(kv => kv.Key, kv => kv.Value - 100000);
-            schedule.UpdateSnapshotsJson = JsonSerializer.Serialize(aged);
+            var entriesAffected = schedule.SimulateOutdatedSnapshot(100000);
             await db.SaveChangesAsync();
 
-            return Results.Ok(new { simulated = true, entriesAffected = aged.Count });
+            return Results.Ok(new { simulated = true, entriesAffected });
         });
 
         // DELETE /api/schedules/{id} — delete a saved schedule
@@ -375,7 +313,7 @@ public static class ScheduleEndpoints
             if (schedule == null)
                 return Results.NotFound();
 
-            var overrides = ParseOverrides(schedule.OverridesJson);
+            var overrides = schedule.Overrides;
 
             var calendar = new Calendar();
             calendar.AddProperty("X-WR-CALNAME", $"Plan: {schedule.Name}");
@@ -387,7 +325,7 @@ public static class ScheduleEndpoints
 
             var nrTygodnia = System.Globalization.ISOWeek.GetWeekOfYear(poniedzialek);
 
-            if (schedule.ScheduleType == "Student")
+            if (schedule.IsStudentPlan)
             {
                 var config = JsonSerializer.Deserialize<StudentConfig>(schedule.ConfigurationJson, CaseInsensitive);
 
@@ -476,7 +414,7 @@ public static class ScheduleEndpoints
 
                 GenerateIcsEvents(calendar, icsEntries, poniedzialek, nrTygodnia);
             }
-            else if (schedule.ScheduleType == "Teacher")
+            else if (schedule.IsTeacherPlan)
             {
                 var config = JsonSerializer.Deserialize<TeacherConfig>(schedule.ConfigurationJson, CaseInsensitive);
 

@@ -1,0 +1,25 @@
+namespace TimetableApp.Contracts.Events;
+
+public sealed record ScheduleEntryProjection(
+    int Id,
+    int Dzien,
+    string DzienNazwa,
+    int Godzina,
+    int Ilosc,
+    string Czas,
+    int Tydzien,
+    string Rodzaj,
+    int Grupa,
+    int IdPrzedmiotu,
+    string Przedmiot,
+    string PrzedmiotSkrot,
+    int IdNauczyciela,
+    string? Nauczyciel,
+    string? NauczycielSkrot,
+    int IdSali,
+    string? Sala,
+    int IdStudiow,
+    string? Studia,
+    int Semestr,
+    int IdSpecjalnosci,
+    long DataAktualizacji);
